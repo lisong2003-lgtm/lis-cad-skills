@@ -80,6 +80,10 @@ def main() -> int:
         if rel.endswith(".cmd") and os.name != "nt":
             print(f"SKIP  Windows 启动器不在轻量包内 {rel}（当前平台 {os.name}，用 python {rel[:-4]}.py 等价调用）")
             continue
+        # 轻量包不随附开发期单测（scripts/tests/）：缺失时跳过而非判失败
+        if "/tests/" in f"/{rel}" and not (ROOT / rel).is_file():
+            print(f"SKIP  开发期单测不在轻量包内 {rel}")
+            continue
         check((ROOT / rel).is_file(), f"文件存在 {rel}")
 
     rc, out = run([PYTHON, str(HERE / "smoke_utf8_json.py")], HERE)

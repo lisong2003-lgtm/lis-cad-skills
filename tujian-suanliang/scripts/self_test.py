@@ -78,6 +78,14 @@ def main() -> int:
         check(("scripts" in m) and ("references" in m), "manifest 含 scripts/references")
 
     for rel in CHECK_FILES:
+        # 轻量包（SkillHub）不随附 Windows .cmd 启动器：非 Windows 平台跳过而非判失败
+        if rel.endswith(".cmd") and not sys.platform.startswith("win"):
+            print(f"SKIP  Windows 启动器不在轻量包内 {rel}（用 python {rel[:-4]}.py 等价调用）")
+            continue
+        # 轻量包不随附开发期单测（scripts/tests/）：缺失时跳过而非判失败
+        if "/tests/" in f"/{rel}" and not (ROOT / rel).is_file():
+            print(f"SKIP  开发期单测不在轻量包内 {rel}")
+            continue
         check((ROOT / rel).is_file(), f"文件存在 {rel}")
 
     rc, out = run([PYTHON, str(HERE / "smoke_utf8_json.py")], HERE)

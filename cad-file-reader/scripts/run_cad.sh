@@ -32,16 +32,19 @@ export CAD_MEM_LIMIT_MB
 # 输出深度：默认完整；--concise 显式精简；--full/--with-evidence 显式完整。
 : "${CAD_CONCISE:=0}"
 forward_args=()
+argc=0
 for _arg in "$@"; do
   case "${_arg}" in
     --concise) export CAD_CONCISE=1 ;;
     --full|--with-evidence) export CAD_CONCISE=0 ;;
-    *) forward_args+=("${_arg}") ;;
+    *) forward_args+=("${_arg}"); argc=$((argc + 1)) ;;
   esac
 done
 export CAD_CONCISE
 export PYTHONPATH="${SKILL_DIR}/vendor${PYTHONPATH:+:${PYTHONPATH}}"
-if (( ${#forward_args[@]} == 0 )); then
+# bash 3.2（macOS 自带）在 set -u 下对空数组取 ${#arr[@]} 会报 unbound variable，
+# 改用标量 argc 计数，保证无参数时打印用法而不是中断。
+if [ "$argc" -eq 0 ]; then
   echo "用法: run_cad.sh <cad_scan|read_cad|cad_interpret|...> [参数...] [--concise|--full|--with-evidence]" >&2
   exit 1
 fi
