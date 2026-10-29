@@ -1,3 +1,11 @@
+# Changelog
+
+## 0.38.3
+
+- **修复（发布兼容）** SkillHub 分发包（zip）不保留文件权限，装完脚本全是 644，直接执行会 permission denied。现在 `scripts/setup.sh` 与各入口脚本（`runtime_env.sh` / `ensure_runtime.sh`）首次运行时幂等补回 `scripts/*.sh`、`scripts/*.py` 的可执行位，用户无需手动 chmod。
+- **修复（macOS 兼容）** `run_cad.sh` 在 macOS 自带 bash 3.2 且 `set -u` 下对空数组取 `${#arr[@]}` 会报 `unbound variable` 崩溃；改用标量 `argc` 计数，无参数时正常打印用法。
+- **新增** `.gitignore`：忽略 `__pycache__`、`.state/`、日志与密钥文件，避免误提交运行态产物。
+
 ## 0.38.2
 
 - **更新发布** 补 CHANGELOG 详细条目与 README.en 版本号；三端（Codex/WorkBuddy/发布仓库）同版本同内容再次校验通过。tujian-suanliang 的 manifest tests 仅保留真实存在的 `scripts/self_test.py`（完整 tests 见本机 shangwu-suanliang 商务版）。
@@ -15,7 +23,6 @@
 - **修复（跨 Agent）** `cad_scan.py` 的 `VENDOR` 由写死 `$HOME/.codex/skills/.../vendor` 改为「`CAD_SKILL_VENDOR` → 技能自身 vendor → 其他 Agent 技能目录」，WorkBuddy / Claude 安装后可直接用自带 vendor。
 - **新增** `requirements.txt` 依赖声明，vendor 缺失或需升级时有据可依。
 
-# Changelog
 
 ## 0.34.0 (2026-10-23)
 - lis-skill-bus 联动由“可选试点”改为“推荐联动（不装自动降级）”：补齐跨平台安装入口（SkillHub slug: lis-skill-bus；GitHub: lisong2003-lgtm/lis-skill-bus；安装器 python install_py.py --apply），保留不装自动降级（写 $HOME/.codex/skills/.skillbus/state.json，五件套各自可用）。

@@ -2,7 +2,7 @@
 name: zhuangshi-suanliang
 slug: zhuangshi-suanliang
 displayName: 装饰算量 · 概算与物资计划
-version: 0.9.27
+version: 0.9.28
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0

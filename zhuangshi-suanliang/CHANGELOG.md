@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.28
+
+- **修复（发布兼容）** SkillHub 分发包（zip）不保留文件权限，装完脚本全是 644，直接执行会 permission denied。现在 `scripts/setup.sh` 与各入口脚本（`runtime_env.sh` / `ensure_runtime.sh`）首次运行时幂等补回 `scripts/*.sh`、`scripts/*.py` 的可执行位，用户无需手动 chmod。
+- **修复** `scripts/setup.sh` 里 `bash bash "$SKILL_DIR/scripts/ensure_base.sh"` 的重复 bash 会让安装第一步直接报 `bash: bash: No such file or directory`，已改为 `bash "...ensure_base.sh"`。
+- **修复（自测误报）** `scripts/self_test.py` 对未随轻量包提交的开发期单测（`scripts/tests/test_*.py`）改为「存在则校验、缺失则 SKIP」，不再让 `SELF_TEST` 因缺件判失败；Windows 专属 `.cmd` 在非 Windows 平台跳过。
+
 ## 0.9.27
 
 - **更新发布** 补 CHANGELOG 详细条目与 README.en 版本号；三端（Codex/WorkBuddy/发布仓库）同版本同内容再次校验通过。tujian-suanliang 的 manifest tests 仅保留真实存在的 `scripts/self_test.py`（完整 tests 见本机 shangwu-suanliang 商务版）。

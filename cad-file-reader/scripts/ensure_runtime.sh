@@ -7,6 +7,8 @@
 # 用法：scripts/ensure_runtime.sh [--quiet]
 set -uo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# SkillHub 分发包（zip）会丢失可执行位：首次运行时幂等自愈，避免 permission denied
+find "$SKILL_DIR/scripts" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.py' \) ! -perm -u+x -exec chmod +x {} + 2>/dev/null || true
 QUIET=0
 if [ "${1:-}" = "--quiet" ]; then QUIET=1; fi
 

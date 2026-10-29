@@ -2,7 +2,7 @@
 name: cad-file-reader
 slug: cad-file-reader
 displayName: CAD 图纸识图与证据提取
-version: 0.38.2
+version: 0.38.3
 license: CC-BY-NC-SA-4.0
 author: lis
 i18n: true
