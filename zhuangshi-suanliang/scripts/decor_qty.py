@@ -367,14 +367,16 @@ def base_quantity(row: dict[str, str]) -> tuple[float, str, str, list[str], list
         if perimeter is not None and height is not None:
             gross = perimeter * height
             formula = f"({_fmt(perimeter)} × {_fmt(height)} - 洞口 {_fmt(openings)} + 侧壁 {_fmt(side_area)}) × {_fmt(count)}"
-        elif length is not None and height is not None:
-            gross = length * height
-            formula = f"({_fmt(length)} × {_fmt(height)} - 洞口 {_fmt(openings)} + 侧壁 {_fmt(side_area)}) × {_fmt(count)}"
         elif length is not None and width is not None and height is not None:
+            # 同时给了长/宽/高且无周长：按矩形推定周长。
+            # 必须排在 length+height 之前，否则会被当作单片墙算成长×高，严重少算。
             gross = 2 * (length + width) * height
             formula = f"(2×({_fmt(length)}+{_fmt(width)}) × {_fmt(height)} - 洞口 {_fmt(openings)} + 侧壁 {_fmt(side_area)}) × {_fmt(count)}"
             status = "需核对" if status == "完成" else status
             missing.append("矩形周长推定需核对")
+        elif length is not None and height is not None:
+            gross = length * height
+            formula = f"({_fmt(length)} × {_fmt(height)} - 洞口 {_fmt(openings)} + 侧壁 {_fmt(side_area)}) × {_fmt(count)}"
         else:
             miss("周长_m+高_m / 长_m+高_m / 直接面积_m2")
             return 0.0, "m2", "", status, missing

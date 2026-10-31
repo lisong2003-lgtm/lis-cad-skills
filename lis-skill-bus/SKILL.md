@@ -3,11 +3,18 @@ name: lis-skill-bus
 slug: lis-skill-bus
 displayName: 本地 Skill 联动总线
 description: 本地 Skill 联动总线（MCP server 安装器，非业务算法技能）。把 5 个 CAD 技能（cad-file-reader、土建 tujian-suanliang、安装 anzhuang-suanliang、装饰 zhuangshi-suanliang、园林 yuanlin-suanliang）的项目状态与识图契约接在一起：同一张图只解析一次，各算量技能共享复用。完全本地、不联网；不装也能用（各技能自动降级到自身 state）。前置依赖 cad-file-reader + 至少一个算量技能。一行命令安装到 $HOME/.codex/mcp_servers/lis-skill-bus 并可选注册 MCP。
-version: 0.1.5
+version: 0.1.6
 license: MIT
 ---
 
-# lis-skill-bus v0.1.4（本地 MCP server 安装器）
+# lis-skill-bus v0.1.6（本地 MCP server 安装器）
+
+## 识图契约红线（硬规则，禁止绕行）
+- 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。
+- **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
+- 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
+- `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
+
 
 ## 这是什么
 `lis-skill-bus` 不是业务技能，不解析图纸、不算量。它是一个本地安装壳/总线：

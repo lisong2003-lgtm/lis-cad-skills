@@ -2,7 +2,7 @@
 name: cad-file-reader
 slug: cad-file-reader
 displayName: CAD 图纸识图与证据提取
-version: 0.38.3
+version: 0.39.2
 license: CC-BY-NC-SA-4.0
 author: lis
 i18n: true
@@ -12,6 +12,17 @@ description: 本地读取 AutoCAD DWG/DXF/DWT/PDF 图纸：DWG/DXF 走流式解�
 ---
 
 # CAD 图纸识图与证据提取（cad-file-reader）
+
+## 识图契约红线（硬规则，禁止绕行）
+- 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。
+- **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
+- 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
+- `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
+- **DWG 解码兜底（仅特殊变体才需要，普通图不强制）**：正常 DWG 由内置 ezdwg 直读即可，不依赖任何外部 CAD/看图 App；只有 ezdwg/libredwg 都读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3# 图审版）才用独立 `ODAFileConverter` 兜底转 DXF 复扫。ODA 是免费可选后端，不随技能强制安装；**禁止调用“CAD快速看图”等看图 App 的 GUI 或内嵌 ODA 库当解析后端**（它们只暴露导 PDF/打印，无公开 CLI，grep 不到转换器）。ODA 转换只能在**复制副本**上执行，禁止覆盖原图；转换后必须回读校验图层/文字/图元，副本 DXF ≠ 图纸原件，不能把转换产物当原图证据。
+- **内存双档**：常规识图默认 `CAD_MEM_LIMIT_MB=4096`（mem_guard 默认）；仅实测超 4GB 的真实大图且串行跑时临时覆盖 `CAD_MEM_LIMIT_MB=8192`，不全局改默认；mem_guard 只在识图子进程内自终止，不杀 WorkBuddy/Codex。
+
+
+> **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
 
 本技能只做**识图、证据提取、候选解释和测量候选**，可输出长度、面积、体积的识图候选值、计算式和复核边界；不把候选值冒充最终工程量、清单量、材料量、造价或结算量。结构混凝土/钢筋算量已迁到 `tujian-suanliang`（本机目录 `shangwu-suanliang`），装饰、安装、钢结构、市政算量分别交给对应专项 skill。
 
@@ -275,7 +286,7 @@ scripts/cad_measure.sh 描述几何/图纸详情.descriptive.json --thickness-m 
 | 安装 | `scripts/cad_scan.sh 安装图.dwg ... --detail-json 安装详情.json` + `scripts/cad_mep_geometry.sh 安装详情.json` | `packs/mep-geometry/SKILL.md`；系统/路由/设备/立管候选，选量给 anzhuang-suanliang |
 | 电气 | `scripts/cad_scan.sh 电气图.dwg ... --detail-json 电气详情.json` + `scripts/cad_electrical_geometry.sh` | `packs/electrical-geometry/SKILL.md`；回路/规格/防雷/消防/弱点候选；不展开芯数线长/负荷/照度 |
 | 钢结构 | `scripts/cad_scan.sh 钢结构图.dwg ... --detail-json 钢结构详情.json` + `scripts/cad_steel_geometry.sh` | `packs/steel-geometry/SKILL.md`；构件/截面/连接/材料候选；重量涂装交专项 |
-| 市政 | `scripts/cad_scan.sh 市政图.dwg ... --detail-json 市政详情.json` + `scripts/cad_municipal_geometry.sh` | `packs/municipal-geometry/SKILL.md`；道路/管网/桥梁/桩号/标高候选 |
+| 市政 | `scripts/cad_scan.sh 市政图.dwg ... --detail-json 市政详情.json` + `scripts/cad_municipal_geometry.sh` | `packs/municipal-geometry/SKILL.md`；道路/管网/桥梁/桩号/标高候选；0.39.0+ 提取圆实体（井圈/阀门/消火栓，`--with-geom` 自动，标注层/图例区/微圆三层剔除） |
 
 ## DWG 转 DXF
 
@@ -308,7 +319,7 @@ scripts/cad_normative.sh --scan 图纸扫描.json --detail 图纸详情.json \
 
 | 专业 | 脚本 | 方法/边界 |
 |---|---|---|
-| 结构 | `scripts/cad_scan.sh 结构图.dwg ... --detail-json 结构详情.json` + `scripts/cad_structural_geometry.sh` | `packs/structural-geometry/SKILL.md`；梁板柱墙/配筋/节点/轴网候选；方量钢筋交 tujian-suanliang |
+| 结构 | `scripts/cad_scan.sh 结构图.dwg ... --detail-json 结构详情.json` + `scripts/cad_structural_geometry.sh` | `packs/structural-geometry/SKILL.md`；梁板柱墙/配筋/节点/轴号候选 + **几何轴网**（`axis_nets`，给跨专业核对用）；方量钢筋交 tujian-suanliang |
 | 总图场地 | `scripts/cad_scan.sh 总图.dwg ... --detail-json 总图详情.json` + `scripts/cad_site_geometry.sh` | `packs/site-geometry/SKILL.md`；红线/道路/停车/挡墙/土方候选；量交市政/土建 |
 | 给排水暖通 | `scripts/cad_scan.sh 给排水图.dwg ... --detail-json 给排水详情.json` + `scripts/cad_hvac_plumbing_geometry.sh` | `packs/hvac-plumbing-geometry/SKILL.md`；管/风管/设备/支吊架候选；量交 anzhuang-suanliang |
 | 精装修/室内 | `scripts/cad_interior_finish_geometry.sh` | `packs/interior-finish-geometry/SKILL.md` |
@@ -317,6 +328,45 @@ scripts/cad_normative.sh --scan 图纸扫描.json --detail 图纸详情.json \
 | 预制装配 | `scripts/cad_precast_geometry.sh` | `packs/precast-geometry/SKILL.md` |
 
 各专业只做识图证据，不输出面积/长度/数量/体积/材料量或造价；统一契约与置信度分层见上文“统一候选契约”。本机真实回归用 `scripts/run_real_dwg_regression.sh --manifest 真图清单.json`，清单可写 `kind=electrical|structural|site|hvac_plumbing|interior_finish|curtain_wall|civil_defense|precast`，发布前脱敏。
+
+## 跨图聚合 / 图纸关系 / 钢筋牌号（识图之后的成表能力）
+
+单张图只能回答「这张图有什么」。下面三个脚本把多张图的候选变成能直接看的表，仍是提取而非工程量。
+
+| 脚本 | 作用 | 输出 |
+|---|---|---|
+| `scripts/drawing_relation.py` | 按项目目录聚类单体、楼层序列与缺口、专业判定、同层跨专业配对、**配对后轴网核对** | `clusters` / `floor_series` / `pairs`（含 `grid_check`），缺建筑图记 `missing_architecture` |
+| `scripts/cad_axis_net.py` | **几何轴网提取**：按轴线实体还原轴网（方向/轴数/总跨/开间序列），供跨专业核对 | 被 `cad_structural_geometry` 写入 `axis_nets`；也可单独跑 `--inputs scan/*_detail.json` |
+| `scripts/cad_axis_networks.py` | **可选 `axis_networks[]`（轴号+轴线→轴格区间）**：从 text_records 的 AXIS/轴号/轴标/轴网/定位 文字取轴号（数字轴/字母轴），在轴号坐标附近找同方向长线段作几何佐证，按 sheet 输出 axis_id/pos/grid.spans。**坐标只是佐证**；无轴网如实 `missing/degraded` | 复用已解析 `cad_scan` 详情 JSON，`--inputs scan/*_detail.json`；可并入 cad-file-reader/v0 contract（可选字段，向后兼容） |
+| `scripts/project_aggregate.py` | 楼层×分区×类别×规格归并构件；按直径×牌号归并钢筋；楼层×直径交叉表 | `aggregate.json/.md/.csv`，`count` 即原始候选重复次数 |
+| `scripts/rebar_grade.py` | 从本批图纸说明表反解「符号→牌号」，回填到钢筋型号 | `rebar-legend.json/.md` |
+
+轴网核对的口径（重要，别说成「已证明是同一栋楼」）：
+
+- **只认几何，不认文字**。轴号在天正转出的图里基本抓不到（实测轴网图层上 0 条文字），
+  但轴线实体一直在——等长、平行、等距重复的直线就是它。
+- **判据是「结构侧覆盖」**：结构柱网通常只是建筑轴网的子集（建筑多出外墙/门窗定位轴），
+  所以看结构图的开间有多少能在建筑图里找到，不看两侧最大值。
+- **开间支持「段和」匹配**：结构一个 3300 开间，建筑图可能被隔墙定位轴拆成 1650+1650。
+- **能证明「不一致」，不能证明「是同一栋」**：同户型不同楼栋共用同一套轴网，
+  间距会完全一致。核对结论为「轴网一致」只说明两图描述同一类平面，仍需人工确认楼栋/范围。
+
+用法：
+
+```bash
+python3 scripts/rebar_grade.py --inputs scan/*_detail.json --out legend.json --md-out legend.md
+python3 scripts/project_aggregate.py --inputs structural/*.json --legend legend.json --out aggregate.json --md-out aggregate.md
+python3 scripts/drawing_relation.py --inputs structural/*.json --out relation.json
+python3 scripts/cad_axis_networks.py --inputs scan/*_detail.json --out axis_networks.json
+```
+
+钢筋牌号这块有三条硬规矩：
+
+1. **牌号只能来自本批图纸的说明表**。本批没有说明表就全部保持 `unknown`，不套国标默认值——不同项目图例可能自定义。
+2. **映射不跨项目串用**。聚合层比对图纸名，来源不符直接弃用并记 `legend_source_mismatch`。跨项目套用会得出「全部 HRB400」这种看着完整实则错误的结果，比 unknown 更危险。
+3. **两种依据分层**：说明表直接定义（`direct`，可核对原文）与按 CAD 字体尾号外推（`bridged`，`%%132` 与 `U+E532` 同尾号）。外推只到 `inferred_candidate`，表格里逐行标注，不混为一谈。
+
+牌号回填需要 `detail` 产物（说明表是整段文字，只在 `text_records` 里）；只给 `structural` 时映射为空，会明确报出来而不是静默给 unknown。
 
 ## 结构算量的归属
 

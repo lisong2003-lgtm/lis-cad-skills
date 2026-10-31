@@ -68,6 +68,10 @@ OCR_IMAGE = Path(
     or find_tool("ocr_image")
     or str(_home_default / "bin" / "ocr_image")
 )
+# 工程图纸以中文图签/图名为主，本地 OCR 必须锁定中文语言包，禁止 auto-lang
+# 自动切换到 eng（蓝图稀疏中文会被误判为英文导致召回坍缩，实测 degraded）。
+OCR_LANG = os.environ.get("CAD_OCR_LANG", "chi_sim").strip() or "chi_sim"
+OCR_FORCE_LANG = os.environ.get("CAD_OCR_FORCE_LANG", "1") not in ("0", "false", "no")
 PDF_VEC_SCRIPT = Path(__file__).resolve().parent / "cad_pdf_vec.py"
 
 SOURCE_SCHEMA = "cad-file-reader/v0"
@@ -186,7 +190,11 @@ def render_pdf_page(pdf: Path, page: int, workdir: Path) -> Path:
 
 
 def ocr_lines(image: Path) -> list[dict]:
-    rc, out, err = _sysrun([str(OCR_IMAGE), "--json", str(image)], timeout=240)
+    ocr_args = [str(OCR_IMAGE), "--json"]
+    if OCR_FORCE_LANG:
+        ocr_args += ["--lang", OCR_LANG, "--no-auto-lang"]
+    ocr_args.append(str(image))
+    rc, out, err = _sysrun(ocr_args, timeout=240)
     if rc != 0:
         raise RuntimeError(f"image-ocr 失败: {err.strip() or out.strip()}")
     try:

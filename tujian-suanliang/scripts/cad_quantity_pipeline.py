@@ -191,9 +191,20 @@ def _geometry_step(
     if str(bbox or "").strip():
         # 图框坐标可能是负数，argparse 必须用 --bbox=值 的形式传
         arguments += ["--bbox=" + str(bbox).strip()]
-    arguments += ["--floor-label", label, "--format", "all", "-o", str(out)]
+    arguments += [_opt("--floor-label", label), "--format", "all", "-o", str(out)]
     return _run(name, "cad_geometry.py", arguments,
                 timeout_seconds=timeout_seconds, retries=retries)
+
+
+def _opt(name: str, value: Any) -> str:
+    """把 `--name value` 拼成单个 `--name=value` 参数。
+
+    负楼层标签（如 `-1F`）作为独立列表元素传给子进程时，argparse 会把它当成
+    选项而不是值，报 `argument --floor-label: expected one argument`——
+    与 bbox 的负数问题同源（见 cad_geometry 调用处的 `--bbox=` 注释）。
+    统一走等号形式，负值才能安全穿过。
+    """
+    return f"{name}={value}"
 
 
 def _reused_step(name: str, source: Path, reason: str) -> dict[str, Any]:
@@ -725,6 +736,10 @@ def main() -> int:
                 beam_geometry,
                 "墙柱图框与梁图框相同，复用梁几何",
             )
+            # 必须把变量也重指向：下游 --support-dxf 取的是 support_geometry，
+            # 只记一条 reused 而不改路径，就会去打开一个从未生成的
+            # support_geometry_<hash>.dxf，报 FileNotFoundError。
+            support_geometry = beam_geometry
         else:
             support_step = _geometry_step(
                 "support-geometry",
@@ -747,6 +762,8 @@ def main() -> int:
                 beam_geometry,
                 "板图框与梁图框相同，复用梁几何",
             )
+            # 同 support_geometry：--slab-dxf/--opening-dxf 都取这个变量
+            slab_geometry = beam_geometry
         else:
             slab_step = _geometry_step(
                 "slab-geometry",
@@ -771,7 +788,7 @@ def main() -> int:
                 "--scan", str(scan),
                 *(["--detail", str(detail)]
                   if detail and detail.exists() else []),
-                "--floor-label", args.floor_label,
+                _opt("--floor-label", args.floor_label),
                 "--run-registry",
                 "--format", "all",
                 "-o", str(beam_objects),
@@ -797,7 +814,7 @@ def main() -> int:
             ),
             "--support-transform", support_transform,
             "--slab-transform", slab_transform,
-            "--floor-label", args.floor_label,
+            _opt("--floor-label", args.floor_label),
             "--format", "all",
             "-o", str(model),
         ]
@@ -1112,7 +1129,7 @@ def main() -> int:
                 "--axis-tolerance-mm",
                 str(args.beam_candidate_axis_tolerance_mm),
                 "--joint-max-mm", str(args.beam_candidate_joint_max_mm),
-                "--floor-label", args.floor_label,
+                _opt("--floor-label", args.floor_label),
                 "-o", str(beam_attribution),
             ]
             if beam_gap_step["status"] == "ok":
@@ -1182,7 +1199,7 @@ def main() -> int:
                 "--model-json", str(model.with_suffix(".json")),
                 "--reconciliation-json", args.beam_gap_reconciliation_json,
                 "--frame-index-json", str(span_frame_json),
-                "--floor-label", args.floor_label,
+                _opt("--floor-label", args.floor_label),
                 "-o", str(span_closure),
             ]
             if intersection_step["status"] == "ok":
@@ -1234,7 +1251,7 @@ def main() -> int:
             dedup_step = _run(
                 "beam-instance-dedup", "cad_beam_instance_dedup.py",
                 ["--model-json", str(model.with_suffix(".json")),
-                 "--floor-label", args.floor_label,
+                 _opt("--floor-label", args.floor_label),
                  "-o", str(beam_dedup)],
                 timeout_seconds=args.timeout_seconds,
                 retries=max(0, args.retries),
@@ -1252,7 +1269,7 @@ def main() -> int:
                 "beam-attribution-conflict",
                 "cad_beam_attribution_conflict.py",
                 ["--model-json", str(model.with_suffix(".json")),
-                 "--floor-label", args.floor_label,
+                 _opt("--floor-label", args.floor_label),
                  "-o", str(beam_conflict)],
                 timeout_seconds=args.timeout_seconds,
                 retries=max(0, args.retries),
@@ -1444,7 +1461,7 @@ def main() -> int:
             "--ledger-json", str(ledger.with_suffix(".json")),
             "--scan-json", str(scan),
             "--beam-json", str(beam_objects.with_suffix(".json")),
-            "--floor-label", args.floor_label,
+            _opt("--floor-label", args.floor_label),
             "--format", "all",
             "-o", str(report),
         ]

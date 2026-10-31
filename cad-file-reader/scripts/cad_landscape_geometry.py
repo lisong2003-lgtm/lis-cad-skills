@@ -769,7 +769,59 @@ def plant_coverage_audit(records, rules, limit: int = 30) -> dict:
     return {"unclassified_legend_words": len(miss), "top": top, "note": "仅审计词库覆盖，不输出数量/算量。"}
 
 
-def plant_legend_candidates(records, rules):
+def _noise_name_plant(plant_name: str, token: str, rules: dict) -> bool:
+    """并列人名/非植物噪声判据（真图驱动，0.39.2）。
+
+    真图教训：sample-road种植总图图签「signer-A signer-B」被单字 token「李」判成乔木。
+    判据：植物名含空格（多段）且**没有任何一段**命中长度≥2 的植物词 → 不是植物。
+    反例保护：「杉木柱 末口」第一段命中「杉木」（≥2 字）→ 真植物构件，必须保留。
+    """
+    parts = [p for p in re.split(r"\s+", str(plant_name or "")) if p]
+    if len(parts) < 2:
+        return False
+    for p in parts:
+        lab, tok = plant_classify(p, rules)
+        if lab and len(re.sub(r"\s+", "", str(tok))) >= 2:
+            return False
+    return True
+
+
+_NOTE_PUNCT_RE = re.compile(r"[。；，、,;:/]|[（(]|\\U\+")
+# 硬景设施/小品不是植物（真图："成品花钵"9 条、"树池"3 条曾混进图例；用完整词避免误伤"丰花月季"）
+_FURNITURE_RE = re.compile(r"花钵|花箱|树池|景墙|座椅|坐凳|廊架|车棚|亭|雕塑|水池|喷泉|台阶|坡道|排水沟|雨水口|层次")
+_DRAWING_TAIL = ("图", "详图", "平面图", "说明", "表", "大样", "做法", "规格", "剖面", "立面",
+                 "示意图", "形式", "配置图", "索引", "目录", "移植")
+_MATERIAL_RE = re.compile(
+    r"花岗岩|荔枝面|芝麻[白灰黑]|黄锈石|锈石|透水砖|水泥|混凝土|沥青|卵石|碎石|板材|面砖|"
+    r"火烧面|光面|盲道|路缘石|植草砖|大理石|砖|砂|骨料")
+# 真植物名长度上限（真图实测：sample-road 147 种图例里，>8 字的全是说明句/图名/铺装材料）
+PLANT_NAME_MAX_LEN = 8
+
+
+def _noise_note_nonplant(plant_name: str) -> str:
+    """说明句/图名/铺装材料噪声判据（真图驱动，0.39.2）→ 返回原因串，空串=通过。
+
+    真图教训：sample-road绿化设计说明的整段句子（"1.3、清除现场碎石…"）与铺装材料名
+    （"芝麻白荔枝面花岗岩"19 次、"黄锈石荔枝面花岗岩（收边）"14 次、"杉树皮卷用棕榈绳
+    捆束"13 次）都被词库子串命中成了"植物图例"。三条判据各自可追溯、不静默。
+    """
+    n = str(plant_name or "").strip()
+    if not n:
+        return "empty_name"
+    if len(n) > PLANT_NAME_MAX_LEN:
+        return "too_long_not_plant_name"
+    if _NOTE_PUNCT_RE.search(n):
+        return "punctuation_note"
+    if n.endswith(_DRAWING_TAIL):
+        return "drawing_title"
+    if _MATERIAL_RE.search(n):
+        return "hardscape_material"
+    if _FURNITURE_RE.search(n):
+        return "hardscape_furniture"
+    return ""
+
+
+def plant_legend_candidates(records, rules, stats: dict | None = None):
     out, seen = [], set()
     cap = int((rules.get("max_plant_legends") or 2000))
     for rec in records:
@@ -788,6 +840,16 @@ def plant_legend_candidates(records, rules):
         if rec.get("x") is None or rec.get("y") is None:
             reasons.append("ambiguous_text_binding")
         plant_name, spec = parse_plant_legend(rec["text"])
+        if _noise_name_plant(plant_name, token, rules):
+            if stats is not None:
+                stats["name_noise_excluded"] = stats.get("name_noise_excluded", 0) + 1
+            continue  # 图签并列人名等非植物噪声（不冒充图例，计数可追溯）
+        noise = _noise_note_nonplant(plant_name)
+        if noise:
+            if stats is not None:
+                stats["note_noise_excluded"] = stats.get("note_noise_excluded", 0) + 1
+                stats[f"noise::{noise}"] = stats.get(f"noise::{noise}", 0) + 1
+            continue  # 说明句/图名/铺装材料不是植物图例（不冒充图例，计数可追溯）
         row = {
             "type": "plant_legend", "category": label, "system": "planting",
             "plant": plant_name, "legend_raw": rec["text"], "spec": spec,
@@ -1093,7 +1155,8 @@ def analyze_file(path, rules):
     records = read_records(data)
     views = drawing_type_candidates(records, rules)
     systems = system_candidates(records, rules)
-    plants = plant_legend_candidates(records, rules)
+    plant_stats: dict = {}
+    plants = plant_legend_candidates(records, rules, plant_stats)
     plant_blocks = block_plant_candidates(data, rules, records)
     plant_fp = block_geom_fingerprint_candidates(data, rules, records)
     plant_blocks, block_links = link_plant_schedule(records, plant_blocks, rules)
@@ -1104,7 +1167,8 @@ def analyze_file(path, rules):
     pdf_geom = pdf_geometry_candidates(data, rules)
     hardscape = hardscape_candidates(records, rules)
     audit = plant_coverage_audit(records, rules)
-    summary = {"drawing_types": len(views), "systems": len(systems), "plant_legends": len(plants), "plant_block_legends": len(plant_blocks), "plant_block_fingerprints": len(plant_fp), "plant_schedule_links": len(plant_links), "paving_closed_areas": len(paving), "green_area_candidates": len(green), "pdf_geometry_candidates": len(pdf_geom), "hardscape": len(hardscape), "unclassified_legend_words": audit.get("unclassified_legend_words", 0)}
+    summary = {"drawing_types": len(views), "systems": len(systems), "plant_legends": len(plants), "plant_block_legends": len(plant_blocks), "plant_block_fingerprints": len(plant_fp), "plant_schedule_links": len(plant_links), "paving_closed_areas": len(paving), "green_area_candidates": len(green), "pdf_geometry_candidates": len(pdf_geom), "hardscape": len(hardscape), "plant_name_noise_excluded": int(plant_stats.get("name_noise_excluded") or 0),
+                  "plant_note_noise_excluded": int(plant_stats.get("note_noise_excluded") or 0), "unclassified_legend_words": audit.get("unclassified_legend_words", 0)}
     return {"schema": SCHEMA, "source_file": path.name, "summary": summary, "drawing_types": views, "systems": systems, "plant_legends": plants, "plant_block_legends": plant_blocks, "plant_block_fingerprints": plant_fp, "plant_schedule_links": plant_links, "paving_closed_areas": paving, "green_area_candidates": green, "pdf_geometry_candidates": pdf_geom, "hardscape": hardscape, "audit": audit, "boundary": "只输出园林识图候选与证据；不输出苗木数量、铺装面积、土方量、材料量、造价或结算量。"}
 
 

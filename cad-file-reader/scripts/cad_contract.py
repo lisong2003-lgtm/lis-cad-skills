@@ -100,6 +100,10 @@ SECTION_KINDS = {
     "fire_protection": "device",
     "weak_current": "device",
     "intelligent_building": "device",
+    # 图纸关系（drawing_relation.py；纯追加，既有 payload 不含这些段落）
+    "clusters": "text",
+    "floor_series": "text",
+    "pairs": "text",
     # 结构识图
     "rebars": "text",
     "structural_geometry": "line",
@@ -275,7 +279,9 @@ def _standard_reasons(
         out.add("geometry_conflict")
     if duplicate or "重复" in text:
         out.add("duplicate_candidate")
-    if "图框外" in text or "outside" in low:
+    # 收窄 outside 判定：原文 `"outside" in text.lower()` 会把 "outside wall"（外墙）这类
+    # 普通英文图面文字误判为"证据坐标在图框外"，故要求出现完整短语。
+    if "图框外" in text or "outside viewport" in low or "outside frame" in low or "outside drawing frame" in low:
         out.add("outside_viewport")
     if (
         any(token in text for token in ("未找到", "缺宽高", "缺显式", "不完整", "缺几何", "缺少 geometry", "缺闭合"))
@@ -318,9 +324,17 @@ def _candidate(
     candidate_id = key if occurrence == 0 else f"{key}-{occurrence + 1:02d}"
     duplicate = occurrence > 0
     confidence = _confidence(row)
+    # 图层名解码失败时上游用 "#句柄" 占位（见 cad_scan 的图层降级）。这类候选的图层仅能归组、
+    # 不能给出语义名，证据链少一环，因此压到 confirmed 门槛以下，只允许落在 inferred_candidate。
+    if isinstance(layer, str) and layer.startswith("#"):
+        confidence = min(confidence, 0.88)
     review_text = _review_text(row)
     declared_reasons = row.get("review_reasons")
-    reasons = _standard_reasons(row, kind, confidence, review_text or "", layer, block_name, bbox, evidence, duplicate)
+    # 提示语同时从「候选文本」和「复核文本」两处匹配：上游识图脚本常只把
+    # "缺比例 / 单位需确认 / 几何冲突" 写在 text 上而不写 review_reason，
+    # 只匹配 review_text 会让这类候选以 confirmed_evidence 静默留在主线候选里。
+    reason_text = " ".join(part for part in (text, review_text) if part)
+    reasons = _standard_reasons(row, kind, confidence, reason_text, layer, block_name, bbox, evidence, duplicate)
     if isinstance(declared_reasons, list):
         reasons.extend(str(x) for x in declared_reasons if str(x) in REVIEW_REASONS)
     reasons = [reason for reason in REVIEW_REASONS if reason in set(reasons)]
@@ -508,6 +522,36 @@ def validate_contract_payload(data: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"contract.candidates[{index}] 缺关键字段却留在主线候选（{', '.join(hit)}）；必须进 review_candidates"
                 )
+    # ---- 可选 axis_networks[]（P1：轴号/轴线→轴格区间，向后兼容） ----
+    axis_nets = contract.get("axis_networks")
+    if axis_nets is not None:
+        if not isinstance(axis_nets, list):
+            errors.append("contract.axis_networks 必须是数组")
+        else:
+            for ni, net in enumerate(axis_nets):
+                pref = f"contract.axis_networks[{ni}]"
+                if not isinstance(net, dict):
+                    errors.append(f"{pref} 必须是对象")
+                    continue
+                for required in ("schema", "sheet", "axis_type", "direction", "axis_count", "grid", "axes"):
+                    if required not in net:
+                        errors.append(f"{pref}.{required} 缺失")
+                if net.get("schema") != "cad-axis-networks/v1":
+                    errors.append(f"{pref}.schema 必须是 cad-axis-networks/v1")
+                axes = net.get("axes")
+                if not isinstance(axes, list) or len(axes) != int(net.get("axis_count", 0) or 0):
+                    errors.append(f"{pref}.axes 与 axis_count 不一致")
+                else:
+                    for ai, ax in enumerate(axes):
+                        if not isinstance(ax, dict):
+                            errors.append(f"{pref}.axes[{ai}] 必须是对象")
+                            continue
+                        for f in ("axis_id", "label", "pos", "along"):
+                            if f not in ax:
+                                errors.append(f"{pref}.axes[{ai}].{f} 缺失")
+        if "axis_networks_summary" in contract and not isinstance(contract["axis_networks_summary"], dict):
+            errors.append("contract.axis_networks_summary 必须是对象")
+
     summary = contract.get("summary")
     if not isinstance(summary, dict):
         errors.append("contract.summary 必须是对象")

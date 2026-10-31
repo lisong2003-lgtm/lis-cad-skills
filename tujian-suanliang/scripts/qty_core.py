@@ -31,10 +31,54 @@ MEMBER_PATTERNS = {
     "墙": re.compile(r"^(Q|QZ|YBZ|GBZ|AZ|BZ)\d+[a-zA-Z]?"),
 }
 STEEL_GRADE_RE = re.compile(r"^Q[2-5]\d{2}[A-Z]?$")   # Q235/Q345/Q355B 是钢材牌号，不是墙编号
+# 混凝土强度等级（GB 50010 序列 C15~C80）：结构图上到处都是 C30/C35/C40，
+# 而"板"的编号前缀恰好含 C，会把强度等级误判成板编号、把板数量与规格清单灌水。
+# 取舍：真实存在"板编号 C30"时会漏，但"多出一堆假板"的危害远大于"漏一块板"。
+CONCRETE_GRADE_RE = re.compile(r"^C(1[5-9]|[2-7]\d|80)$")
 SIZE_RE = re.compile(r"(?<!\d)(\d{2,4})\s*[x×X]\s*(\d{2,4})(?!\d)")   # 前后不许再粘数字，防"XL4 600x800"被读成4600x800
 THK_RE = re.compile(r"h\s*=\s*(\d{2,3})")
 SPAN_RE = re.compile(r"\((\d{1,2})([AB]?)\)")
 TITLE_RE = re.compile(r"(图|表)$")
+# 图签栏栏目名不是图名：图签里"绘    图""设    计"带填空空格，且落在图框外角落，
+# 若当图名收进来，会挤进真图名清单、被楼层切分当成一层去取数。
+TITLE_BLOCK_RE = re.compile(r"绘\s*图|制\s*图|描\s*图|晒\s*图|设\s*计|校\s*对|审\s*核|审\s*定|"
+                            r"项目负责人|专业负责人|工种负责人|建设单位|设计单位|工程名称|项目名称|子项名称|"
+                            r"图\s*号|图\s*别|日\s*期|比\s*例|会\s*签|签\s*名|出图专用章|注册(师|章)")
+
+
+TITLE_R_LADDER = (30000.0, 60000.0, 120000.0, 160000.0)   # 图名邻域半径档位，见 find_titles
+
+
+def is_title_noise(t):
+    """图签/标题栏文字排除：填空空格（绘    图）、栏目名（设计单位、图号…）、
+    说明句（"H为结构标高，详层高表"）都不是图名。"""
+    if re.search(r"\s{2,}", t):
+        return True
+    if "，" in t or "。" in t:          # 带逗号句号的是一句话，不是图名
+        return True
+    return bool(TITLE_BLOCK_RE.search(t))
+
+
+# 图面证据点：只用来判断"图名这一带是不是真的图面"，不进构件分类、不改算量口径。
+# 基础图/板带图没有柱梁板墙编号（只有 JCL/CT 基础编号、截面、配筋），
+# 只认编号会让 members≈0，整张图一个真图名都认不出来、楼层切分直接失效。
+EVID_BASE_RE = re.compile(r"^(CT|JC|DJ|ZJ|ZH|JCL|JZL|AL|TB|PT)\d+[a-zA-Z]?")
+# DWG 里直径符号常写成转义 %%13 或 %%c（"%%1328@200" 就是 Φ28@200），只认 Φ 会漏掉整本文字
+EVID_REBAR_RE = re.compile(r"(?:%%1[0-9]{2}|%%[cC]|[Φφ]|C)\s*\d{1,2}\s*@\s*\d{2,4}"
+                           r"|\d+\s*(?:%%1[0-9]{2}|%%[cC]|[Φφ]|C)\s*\d{1,2}")
+
+
+def is_evidence(txt):
+    """该文字能否作为"这里是图面"的证据：构件编号 / 基础编号 / 截面尺寸 / 配筋。"""
+    t = (txt or "").strip()
+    if not t:
+        return False
+    head = t.split("/")[0]
+    if any(p.match(head) for p in MEMBER_PATTERNS.values()):
+        return True
+    if EVID_BASE_RE.match(head):
+        return True
+    return bool(SIZE_RE.search(t) or EVID_REBAR_RE.search(t))
 ELEV_ROW = re.compile(r"[+±]?\d{1,3}\.\d{2,3}")
 
 
@@ -194,7 +238,9 @@ def run_normative(out: Path) -> bool:
     args = ["bash", str(script), "--scan", str(scan),
             "--rules", str(cad_base() / "rules"), "--format", "all", "-o", str(out / "normative")]
     if detail.exists():
-        args[3:3] = ["--detail", str(detail)]
+        # 插在 --scan 的值之后。原写法 args[3:3] 会把 --detail 插到 "--scan" 与其值之间，
+        # 使 --scan 拿到 "--detail" 当作值、真正的 scan 路径被挤到后面，参数错位。
+        args[4:4] = ["--detail", str(detail)]
     r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode != 0:
         err = r.stderr.strip().splitlines()
@@ -333,12 +379,11 @@ def find_titles(rows, min_refs=10, radius=None, pattern=None):
     cand = []
     for _i, txt, _layer, _kind, sheet, x, y in rows:
         t = txt.strip()
-        if 5 <= len(t) <= 40 and TITLE_RE.search(t) and (not rx or rx.search(t)):
+        if 5 <= len(t) <= 40 and TITLE_RE.search(t) and not is_title_noise(t) and (not rx or rx.search(t)):
             cand.append((t, x, y, sheet))
-    members = [(x, y) for _i, txt, _l, _k, _s, x, y in rows
-               if any(p.match(txt.strip().split("/")[0]) for p in MEMBER_PATTERNS.values())]
+    members = [(x, y) for _i, txt, _l, _k, _s, x, y in rows if is_evidence(txt)]
     if not cand or not members:
-        return [], {"cand": len(cand), "members": len(members), "real": 0}
+        return [], {"cand": len(cand), "members": len(members), "real": 0, "noise": 0}
     step = 20000.0
     grid = {}
     for x, y in members:
@@ -349,17 +394,25 @@ def find_titles(rows, min_refs=10, radius=None, pattern=None):
                    for cy in range(int((y - r) // step), int((y + r) // step) + 1)
                    for mx, my in grid.get((cx, cy), ()) if abs(mx - x) <= r and abs(my - y) <= r)
 
-    nn = sorted(min(abs(x - mx) + abs(y - my) for mx, my in members) for _t, x, _y, _s in cand)
-    r_auto = radius or min(max(nn[len(nn) // 2] * 1.6, 30000.0), 160000.0)
+    # 邻域半径按图名各自定：从 30m 起一档档放大，取第一个凑够 min_refs 条证据的档。
+    # 不能用"到最近一条证据的距离"定尺度——图名旁边偶然飘来一条尺寸标注就会把半径压到 30m，
+    # 真正的图面证据全在更远处，于是主图名反而认不出来（C 区框架梁图就是这样丢的）。
+    # 上限 160m：放到最大还凑不够 min_refs，说明这条文字只是说明/图签里带"图"字，不是图名。
+    ladder = (float(radius),) if radius else TITLE_R_LADDER
     best = {}
     for t, x, y, sh in cand:
-        n = near(x, y, r_auto)
+        n, r = 0, ladder[0]
+        for rr in ladder:
+            n = near(x, y, rr)
+            r = rr
+            if n >= min_refs:
+                break
         if n >= min_refs and (t not in best or best[t]["refs"] < n):
-            best[t] = {"title": t, "x": x, "y": y, "refs": n, "sheet": sh}
-    return list(best.values()), {"radius": round(r_auto), "cand": len(cand), "real": len(best), "members": len(members)}
+            best[t] = {"title": t, "x": x, "y": y, "refs": n, "sheet": sh, "r": round(r)}
+    return list(best.values()), {"radius": round(ladder[0]), "cand": len(cand), "real": len(best), "members": len(members)}
 
 
-def frame_box(hits, sheets, fallback_radius=60000.0):
+def frame_box(hits, sheets, rows=None, fallback_radius=60000.0):
     """该层范围 = 命中真图名所在图框的并集；图框查不到时以图名坐标为圆心取方框。"""
     box = None
     for h in hits or []:
@@ -371,35 +424,70 @@ def frame_box(hits, sheets, fallback_radius=60000.0):
             b = (h["x"] - fallback_radius, h["y"] - fallback_radius, h["x"] + fallback_radius, h["y"] + fallback_radius)
         box = (min(box[0], b[0]) if box else b[0], min(box[1], b[1]) if box else b[1],
                max(box[2], b[2]) if box else b[2], max(box[3], b[3]) if box else b[3])
+    if box and frame_too_broad(box, sheets, rows):
+        return None
     return box
 
 
-def window_box(hits, titles, lo=20000.0, hi=60000.0, k=0.6):
+def frame_too_broad(box, sheets, rows=None):
+    """这个"图框"是不是坐标聚类粘成的一大片（不是真图幅）。
+
+    不能只看绝对尺寸：车库顶板梁图整张就一幅 260 m×250 m 的大平面图，
+    一刀切 200 m 会把真图幅判掉、退回"图名 ±20 m"的小窗口，全层标注取不到。
+    判据：
+      - 图上只有一个图框：就是它；
+      - 该框装下全图 ≥60% 文字：这张图本来就这一幅，尺寸大是真的；
+      - 否则比同图其它图框的中位跨度大 4 倍以上（或超 200 m）才当作聚类失败。
+    """
+    if box is None:
+        return True
+    spans = [max(b[2] - b[0], b[3] - b[1]) for b in (sheets or {}).values() if b and len(b) == 4]
+    if len(spans) < 2:
+        return False
+    if rows:
+        inside = sum(1 for r in rows if in_box(box, r[5], r[6], 0.0))
+        if inside >= 0.6 * len(rows):
+            return False
+    spans.sort()
+    med = spans[(len(spans) - 1) // 2]      # 取下位中位数：图框少的时候不被那个大框自己拉高
+    return max(box[2] - box[0], box[3] - box[1]) > max(med * 4.0, 200000.0)
+
+
+def window_box(hits, titles, lo=20000.0, hi=60000.0, k=0.6, radius=None):
     """以图名为中心的取数窗口：半径＝图名到最近同名外图名距离的中位数×0.6，夹在 20~60 m。
-    图纸没有图框块（很多图都这样）时，这是唯一可靠的范围。"""
-    ds = []
-    for h in hits or []:
-        d = min((abs(h["x"] - o["x"]) + abs(h["y"] - o["y"]) for o in titles if o is not h), default=None)
-        if d:
-            ds.append(d)
-    if not ds:                       # 只有一个图名时没有"相邻图名"可参照，取上限半径
-        r = hi
+    图纸没有图框块（很多图都这样）时，这是唯一可靠的范围；人工给了 radius 就按人工的来。"""
+    if radius:
+        r = float(radius)
     else:
-        ds.sort()
-        r = min(max(ds[len(ds) // 2] * k, lo), hi)
+        ds = []
+        for h in hits or []:
+            d = min((abs(h["x"] - o["x"]) + abs(h["y"] - o["y"]) for o in titles if o is not h), default=None)
+            if d:
+                ds.append(d)
+        if not ds:                       # 只有一个图名时没有"相邻图名"可参照，取上限半径
+            r = hi
+        else:
+            ds.sort()
+            r = min(max(ds[len(ds) // 2] * k, lo), hi)
     x0 = min(h["x"] for h in hits) - r; x1 = max(h["x"] for h in hits) + r
     y0 = min(h["y"] for h in hits) - r; y1 = max(h["y"] for h in hits) + r
     return (x0, y0, x1, y1)
 
 
-def scope(rows, titles, label, sheets, regex=False):
-    """该层范围：优先图框；图框也没有时按"最近真图名归属"，只收属于命中图名的记录。"""
+def scope(rows, titles, label, sheets, regex=False, radius=None):
+    """该层范围：优先图框；图框也没有时按"最近真图名归属"，只收属于命中图名的记录。
+
+    radius：人工指定取数半径（mm）。图名与图面分处两处、图框又识别不出主图幅时
+    （C 区墙柱图图名落在 40 m 小图框里，图面在别的图幅），用人工半径兜底。
+    """
     hits = [t for t in titles if (re.search(label, t["title"]) if regex else label in t["title"])]
     if not hits:
         return None, [], [], None
-    box = frame_box(hits, sheets)
-    if box and max(box[2] - box[0], box[3] - box[1]) > 200000:     # "图框"其实是坐标聚类出来的一大片，不可信
-        box = None
+    box = None
+    if radius:
+        box = window_box(hits, titles, radius=float(radius))
+    if box is None:
+        box = frame_box(hits, sheets, rows)
     if not box:
         box = window_box(hits, titles)
     if box:
@@ -454,6 +542,8 @@ def parse_members(rows, dedupe_mm=1500.0):
             continue
         for cat, pat in MEMBER_PATTERNS.items():
             if cat == "墙" and STEEL_GRADE_RE.match(key):
+                continue
+            if cat == "板" and CONCRETE_GRADE_RE.match(key):
                 continue
             if not pat.match(key):
                 continue
@@ -554,6 +644,8 @@ def member_code(t):
         return None, None
     for cat, pat in MEMBER_PATTERNS.items():
         if cat == "墙" and STEEL_GRADE_RE.match(code):
+            continue
+        if cat == "板" and CONCRETE_GRADE_RE.match(code):
             continue
         if pat.match(code):
             return cat, code
@@ -1274,6 +1366,8 @@ def write_out(rows, plan, missing, ctx, out_base: Path, fmt="all"):
              f"｜墙线长 {ctx['wall_len'] or 0} m｜范围 {ctx['box_src']}\n\n")
     if ctx.get("story_warn"):
         md.write(f"> ⚠️ **层高需核对**：{ctx['story_warn']}\n\n")
+    if ctx.get("box_warn"):
+        md.write(f"> ⚠️ **取数范围偏小**：{ctx['box_warn']}\n\n")
     md.write(f"**本次查询 {ctx['query_secs']} s**；索引 {'命中缓存（未解图）' if ctx['cached'] else '本次新建 ' + str(ctx['index_secs']) + ' s'}"
              f"｜口径 {ctx['rules']['版本']}（{ctx['rules']['指纹']}）\n\n")
     op = ctx.get("openings") or {}
@@ -1441,7 +1535,8 @@ def cmd_floor(a):
     cached = index_secs < 0.6
     meta, built, rows, segs, sheets = load(db)
     titles, info = find_titles(rows, a.min_refs, a.radius_mm, a.title_pattern)
-    hits, kept, dropped, fbox = scope(rows, titles, a.floor_label, sheets, a.floor_regex)
+    hits, kept, dropped, fbox = scope(rows, titles, a.floor_label, sheets, a.floor_regex,
+                                      getattr(a, "window_radius_mm", None))
     if hits is None:
         print(json.dumps({"ok": False, "status": "not-found", "query": a.floor_label,
                           "图上真图名": [t["title"] for t in titles][:80]}, ensure_ascii=False, indent=1))
@@ -1532,6 +1627,11 @@ def cmd_floor(a):
               "story_src": sinfo.get("来源表") or sinfo.get("来源") or "人工参数",
               "story_algo": sinfo.get("算法", ""), "story_warn": sinfo.get("需核对", ""),
               "box_src": ("图框 %dm×%dm" % ((fbox[2]-fbox[0])//1000, (fbox[3]-fbox[1])//1000)) if fbox else "未取到",
+              # 图名与图面分处两处时图框会框错（只框到图名周边一小块），
+              # 这时取到的文字占全图比例极低，明说比静默出个偏小的量好
+              "box_warn": ("只纳入全图 %d%% 的文字，图名与图面可能不在同一个图框里；"
+                           "人工给 --window-radius-mm 直接定取数半径" % (100 * len(kept) // max(len(rows), 1)))
+                          if rows and len(kept) < 0.1 * len(rows) else "",
               "grid": grid, "grid_src": ("图面自动" if ginfo.get("x向轴数") else
                              ("人工参数" if a.axis_grid else ("本图上次配置" if grid else "未取到"))),
               "wall_len": wlen, "cached": cached, "index_secs": index_secs, "notes": facts, "strip": strip,
@@ -1579,6 +1679,9 @@ def main():
     p.add_argument("--no-geom", dest="with_geom", action="store_false")
     p.add_argument("--min-refs", type=int, default=10)
     p.add_argument("--radius-mm", type=float); p.add_argument("--title-pattern")
+    p.add_argument("--window-radius-mm", dest="window_radius_mm", type=float,
+                   help="人工指定本层取数半径(mm)：图名与图面分处两处、图框又识别不出主图幅时用，"
+                        "给了就不再猜图框，直接以图名为心按这个半径取数")
     p.add_argument("--try-auto-grid", dest="try_auto_grid", action="store_true", default=True,
                    help="默认从普通线段复原轴网（支持混合跨距）；失败会写进缺项清单")
     p.add_argument("--no-auto-grid", dest="try_auto_grid", action="store_false")

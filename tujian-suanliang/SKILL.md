@@ -2,7 +2,7 @@
 name: tujian-suanliang
 slug: tujian-suanliang
 displayName: 土建算量 · 混凝土与钢筋计划口径速算
-version: 0.9.29
+version: 0.9.37
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
@@ -15,6 +15,17 @@ locales: [zh-CN, en-US]
 ---
 
 # 土建算量
+
+## 识图契约红线（硬规则，禁止绕行）
+- 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。
+- **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
+- 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
+- `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
+
+- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
+
+
+> **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
 
 **它解决的一件事**：施工员/技术员不会用广联达，也要在几分钟内拿到"这层要多少方混凝土、什么标号、大概多少吨钢筋"，直接抄进物资计划。
 
@@ -74,6 +85,26 @@ scripts/run_qty.sh floor 图纸.dwg --floor-label "五层板配筋图" --with-ge
 # 5) 图上读不到柱截面时，照柱表敲一次，本图之后所有层沿用（会标"人工参数"，不冒充图面直读）
 scripts/run_qty.sh floor 图纸.dwg --floor-label "标高（下）~（上）墙柱平法施工图" --with-geom \
   --member-size "KZ1=500x900,KZ2=600x600,Q2=250" -o 墙柱层计划
+
+# 6) 钢筋吨位汇总：口径A(含筋率带) × 口径B(图面配筋构成) 交叉核对 → 推荐区间
+scripts/rebar_tonnage.sh --plan 该层计划-计划.csv --aggregate aggregate.json --out-prefix 钢筋吨位
+#    也可直接吃 s5 流水线产物（无计划 CSV 时）：
+scripts/rebar_tonnage.sh --quantity-report quantity_report.json --aggregate aggregate.json --out-prefix 钢筋吨位
+#    没有 aggregate.json 时，口径B 可用 s5 扫描产物的 rebar_summary（--scan-rebar）：
+scripts/rebar_tonnage.sh --quantity-report quantity_report.json --scan-rebar cad_scan.json --out-prefix 钢筋吨位
+#    单层吨位加 --floor：口径B 只用该层的配筋行（rebar_by_floor），不再借全图构成
+scripts/rebar_tonnage.sh --quantity-report quantity_report.json --aggregate aggregate.json --floor 8.600 --out-prefix 钢筋吨位
+
+# 7) 构件级三级校对：图面标注(beam_objects) × 模型几何(beam_schedule) 按编号互对
+#    五态：一致 / 截面冲突 / 规格残缺 / 图面有模型无 / 模型有图面无
+scripts/cad_member_audit.sh --quantity-report s5/quantity_report.json \
+  --beam-objects s5/beam_objects.json --out-prefix 构件校对
+
+# 8) 钢结构吨位估算：吃 cad-file-reader 钢结构识图包的 *.steel.json
+#    米重=截面几何公式（H型/圆管/方矩管/角钢/C·Z檩条），长度=显式L= 或构件图层线段
+#    槽钢号数/2段式H型/缺宽钢板只计数不硬凑；±15% 带，final_quantity=false
+#    先识图：bash ../../cad-file-reader/scripts/cad_steel_geometry.sh 钢结构详情.json --out-dir 钢结构识图
+scripts/steel_tonnage.sh --steel 钢结构识图/xxx.steel.json --out-prefix 钢结构吨位
 ```
 
 
@@ -125,6 +156,10 @@ scripts/run_qty.sh advanced 结构图.dwg \
 - 板＝轴网包络面积 × 板厚档占比分摊（按图面板厚标注位置数加权）
 - 墙＝墙线长 × 层高 × 墙厚（长需 `--with-geom`）
 - 订货量＝净量 ×(1+损耗)；钢筋列＝净量 × 图面/经验含筋率区间 → **给出的是带，不是逐根**
+- 钢筋吨位汇总（0.9.31，`scripts/rebar_tonnage.py`）：两个口径交叉核对——口径A＝混凝土净量×含筋率区间；口径B＝cad-file-reader 聚合 JSON 的图面配筋构成（直径×米重 0.00617·d² → 加权平均直径 → A 带内位置，收窄成建议区间）；**推荐区间取两带交集**，交集为空时说明偏差方向、不硬凑数。输出标「估算带（±20~30%），final_quantity=false」
+- 0.9.32：新增 `--quantity-report` 入口——直接吃 s5 `cad_quantity_pipeline.py` 的 `quantity_report.json`（与 `--plan` 二选一）。防重复计数：component_schedule 某类别有体积行就只算它；该类别无体积（真图实况是多为 index-only）时梁走 beam_schedule 模型行、板走 slab_schedule；column_schedule 是柱子集永不重复计入。规则里缺含筋率且贡献为 0 的类别会显式报警（quantity_report 路径没有自带带可退）。
+- 0.9.33：`--floor` 单层口径B——按楼层名过滤 aggregate 的 `rebar_by_floor` 行算加权直径（宽松匹配，找不到回退全图并在输出标注）；构件级校对 `scripts/cad_member_audit.py`——L1 图面标注（beam_objects 目标图框，未给则退 component_schedule 全文件索引并在输出提示口径差异）× L2 模型几何（beam_schedule）按编号互对，五态（一致/截面冲突/规格残缺/图面有模型无/模型有图面无）+ 体积守恒线，self_check=true。真图（J-5 -0.100 层）：beam_objects 口径 21 对编号全对齐（全文件口径的 55 个"图面有模型无"是其他图框标注混入的假缺口）。
+- 0.9.37（真图·sample-tujian 10 张）：**楼层切分三处修复**——①`find_titles` 变量遮蔽 bug（图名到构件的距离取成残留 y），地库梁图这类"图名标在图面上方"的图一个真图名都认不出，半径改按图名逐条 30/60/120/160 m 分档；②图名证据从"只认柱梁板墙编号"扩到 编号∪基础编号(JCL/CT)∪截面∪配筋（含 `%%13` 转义），基础图/板带图不再因 members≈0 判死；③图签噪声（"绘    图"、设计单位/图号栏目名、带逗号的说明句）剔除。真图名 262 → 555 个，10 张图张张出图名。**取数范围**：去掉"图框 >200 m 就不可信"的一刀切（C 区车库顶板梁 260 m×250 m 是真图幅），改按"是否装下全图 ≥60% 文字 / 是否比其它图框中位跨度大 4 倍"判断，同图纳入文字 19 → 5003 条；新增 `--window-radius-mm` 人工定取数半径；纳入文字不足全图 10% 时报告头提示"取数范围偏小"。
 - 后浇带：带面积＝带长×带宽，按本层各板厚档面积占比分摊 → 封闭带一笔（标号按说明"高一级"，父级推定则仍标推定），先浇区同额扣减，**总量守恒**
 - 洞口：图面能算出尺寸的（如 `JD5 720x300`）自动从板面积里扣，≥0.3㎡ 才扣；结构图常只画不注尺寸，那部分要照建施给 `--openings-m2`，扣减量与来源都写进输出
 - 同一个编号在图上有多种截面/厚度标注时：取出现次数最多的那个，全部候选写进"依据"并在顶上提示"需核对"，不静默选一个

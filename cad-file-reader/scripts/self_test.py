@@ -23,6 +23,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,16 +48,52 @@ def _now() -> str:
 
 
 def _resolve_python() -> Path:
-    candidates = [
+    """选一个能跑全量单测的 Python（test_rebar_grade 等依赖 pytest）。
+
+    工程机上的 Bundled runtime（codex-primary-runtime）有时只有二进制覆盖物，
+    没有可用的 python3；系统的 /usr/bin/python3 又缺 pytest，会直接让 unittest
+    discover 报 loader 错误。这里优先拼接 WorkBuddy/Poetry 等已知带 pytest 的
+    解释器，并对候选做一次 import pytest 探针，找不到再回落 sys.executable。
+    """
+    candidates: list[Path] = [
         Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "bin" / "python3",
     ]
     try:
         candidates += sorted((Path.home() / ".cache" / "codex-runtimes").glob("*/dependencies/python/bin/python3"))
     except OSError:
         pass
+    try:
+        # WorkBuddy 托管 Python（本机实测带 pytest + PIL + ezdxf/eZdwg/fontTools）
+        wb = Path.home() / ".workbuddy" / "binaries" / "python" / "versions"
+        if wb.is_dir():
+            candidates += [Path(v) / "bin" / "python3" for v in sorted(wb.iterdir(), key=lambda x: x.name) if v.is_dir()]
+            if (Path.home() / ".workbuddy" / "binaries" / "python" / "current").exists():
+                candidates.append(Path.home() / ".workbuddy" / "binaries" / "python" / "current" / "bin" / "python3")
+    except OSError:
+        pass
+    try:
+        # pdf-inspector 技能 venv 也能跑 unittest（若已装 pytest）
+        venv = Path.home() / ".codex" / "skills" / "pdf-inspector" / ".venv" / "bin" / "python3"
+        if venv.exists():
+            candidates.append(venv)
+    except OSError:
+        pass
     candidates.append(Path(shutil.which("python3") or "/nonexistent"))
+    seen: set[Path] = set()
     for cand in candidates:
-        if cand and cand.is_file() and os.access(str(cand), os.X_OK):
+        if cand is None or not cand.is_file() or not os.access(str(cand), os.X_OK):
+            continue
+        if cand.resolve() in seen:
+            continue
+        seen.add(cand.resolve())
+        try:
+            probe = subprocess.run(
+                [str(cand), "-c", "import pytest; print('PYTEST_OK')"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception:
+            continue
+        if probe.returncode == 0 and "PYTEST_OK" in probe.stdout:
             return cand
     return Path(sys.executable)
 
@@ -199,6 +236,47 @@ def run_unit_tests(python: Path) -> tuple[dict, int]:
     if not TESTS_DIR.is_dir() or not any(TESTS_DIR.glob("test_*.py")):
         return {"ok": True, "skipped": True,
                 "detail": {"reason": f"未随附单元测试目录（{TESTS_DIR}），已跳过；完整包可自测"}}, 0
+    return _run_unit_tests_pytest(python)
+
+
+def _run_unit_tests_pytest(python: Path) -> tuple[dict, int]:
+    """全量单测门禁：优先 pytest（能统计参数化子例，基线 306 个节点），
+    失败才回落到 unittest discover，保证 self_test 输出与 306 基线一致。"""
+    data: dict = {}
+    try:
+        probe = subprocess.run(
+            [str(python), "-c", "import pytest; print('PYTEST_OK')"],
+            capture_output=True, text=True, timeout=30,
+        )
+        pytest_ok = probe.returncode == 0 and "PYTEST_OK" in probe.stdout
+    except Exception:
+        pytest_ok = False
+    if pytest_ok:
+        proc = subprocess.run(
+            [str(python), "-m", "pytest", str(TESTS_DIR), "--tb=short", "-q"],
+            cwd=str(SCRIPTS_DIR),
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        out_text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        m_passed = re.search(r"(\d+)\s+passed", out_text)
+        m_failed = re.search(r"(\d+)\s+failed", out_text)
+        m_errors = re.search(r"(\d+)\s+err?ors?", out_text)
+        data["tests_run"] = int(m_passed.group(1)) if m_passed else len(re.findall(r"\b(PASSED|PASS)\b", out_text))
+        data["failures"] = int(m_failed.group(1)) if m_failed else (0 if proc.returncode == 0 else -1)
+        data["errors"] = int(m_errors.group(1)) if m_errors else 0
+        stderr_text = (proc.stderr or "") + "\n" + (proc.stdout or "")
+        data["stderr_tail"] = stderr_text.strip().splitlines()[-8:]
+        data["stderr_trace"] = [
+            ln for ln in stderr_text.splitlines()
+            if ln.startswith(("Traceback", "  File ", "    ")) or ln.startswith(("E ", ">", "ERROR:", "FAIL:", "TypeError", "UnicodeEncodeError"))
+        ][:80]
+        data["ok"] = proc.returncode == 0 and data["failures"] == 0 and data["errors"] == 0
+        data["rc"] = proc.returncode
+        return data, (0 if data.get("ok") else 1)
+
+    # pytest 缺失时的 unittest 兜底（旧环境）
     proc = subprocess.run(
         [str(python), str(Path(__file__).resolve()), "--unit-json"],
         cwd=str(SKILL_DIR),
@@ -213,7 +291,6 @@ def run_unit_tests(python: Path) -> tuple[dict, int]:
     data["rc"] = proc.returncode
     stderr_text = proc.stderr or ""
     data["stderr_tail"] = stderr_text.strip().splitlines()[-8:]
-    # 保留关键 traceback 摘要，避免 CI 只留最后五行而无法定位失败点
     data["stderr_trace"] = [
         ln for ln in stderr_text.splitlines()
         if ln.startswith(("Traceback", "  File ", "    ")) or ln.startswith(("ERROR:", "FAIL:", "TypeError", "UnicodeEncodeError"))

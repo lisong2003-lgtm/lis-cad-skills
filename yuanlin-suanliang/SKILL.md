@@ -2,7 +2,7 @@
 name: yuanlin-suanliang
 slug: yuanlin-suanliang
 displayName: 园林算量 · 苗木统计与铺装面积
-version: 0.4.31
+version: 0.4.33
 platforms: [macos, windows, linux]
 locale: zh-CN
 locales: [zh-CN, en-US]
@@ -16,6 +16,16 @@ i18n:
 ---
 
 # 园林算量 v0.4.27
+
+## 识图契约红线（硬规则，禁止绕行）
+- 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。
+- **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
+- 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
+- `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
+- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
+
+
+> **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
 
 ## 语言与区域范围
 
@@ -181,7 +191,7 @@ bash scripts/yuanlin_qty.sh \
 
 ## 真图回归结论（2026-10-14）
 
-- 公司转换版：经十一路安置区景观施工图 `_t3` 边界。
+- 公司转换版：sample-road安置区景观施工图 `_t3` 边界。
   - `02种植总图+苗木表_t3.dwg`：苗木表 54 条、株数基线 1792；图例/种植文字 P2 15 类/115 次；因图层空、块名空，平面逐株计数不可用。
   - `04铺装详图一_t3.dwg`：默认不硬出面积；强算 403 条 P3 候选、合计 235976.5657 m²，不计主线。v0.2.0 的 561 条/85374.0195 m² 差异来自伪环过滤与“候选环面积合计”口径修正，不是同一口径直接比较。
   - `01总图部分_t3.dwg`、`绿化样本图.dwg`、`绿化设计说明.dwg`：主线 0，降级正确。

@@ -42,7 +42,6 @@ CHECK_FILES: list[str] = [
         "scripts/run_qty.cmd",
         "rules/口径.json",
         "packs/quantity-pipeline/SKILL.md",
-        "scripts/tests/test_qty_core.py"
 ]
 CLI_HELP: list[str] = [
         "cad_quantity_pipeline.py"
@@ -99,6 +98,26 @@ def main() -> int:
         check(rc == 0, f"CLI --help rc=0  {cli}")
         if rc != 0:
             print(out)
+
+    # 真实单元测试（算法级回归）：轻量包未随附 tests 目录时跳过，不判失败。
+    # 直接在进程内 discover，拿到 result.testsRun，避免解析 unittest 文本输出
+    # （unittest 的 "Ran N tests / OK" 走 stderr，解析不可靠）。
+    tests_dir = HERE / "tests"
+    if tests_dir.is_dir() and any(tests_dir.glob("test_*.py")):
+        import unittest
+
+        # top_level_dir 必须等于 start_dir：tests/ 无 __init__.py，
+        # 否则 3.13 会报 "Start directory is not importable"。
+        suite = unittest.TestLoader().discover(
+            start_dir=str(tests_dir), pattern="test_*.py", top_level_dir=str(tests_dir)
+        )
+        result = unittest.TextTestRunner(verbosity=0, stream=sys.stdout).run(suite)
+        check(result.wasSuccessful(), f"单元测试 discover（{result.testsRun} 项）")
+        if result.errors or result.failures:
+            for case, tb in (result.errors + result.failures)[:10]:
+                print(f"  {case}\n{tb}")
+    else:
+        print("SKIP  未随附单元测试目录（scripts/tests），已跳过；完整包可自测")
 
     if FAILURES:
         print("SELF_TEST_FAILED", FAILURES)

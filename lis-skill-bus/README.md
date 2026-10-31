@@ -1,4 +1,4 @@
-# lis-skill-bus v0.1.0
+# lis-skill-bus v0.1.6
 
 本地 Skill 联动总线：**Skill 管专业算法，bus 管项目状态与契约**。
 纯 Python stdlib、不联网、跨平台；CLI 与 MCP 双模式，下载即用、可降级。
@@ -12,7 +12,7 @@
 详细话术见 `BENEFITS.md`。
 
 ## 目录
-- `skillbus.py`             MCP stdio server + CLI 降级入口
+- `skillbus.py`             MCP stdio server + CLI 降级入口（含 detect-skill / find-contract）
 - `schemas/cad-contract-v1.schema.json`  统一联动契约（复用 cad-file-reader/v0 + qto-project/v1）
 - `install_skillbus.sh`     安装/回滚脚本（--dry-run / --apply / --uninstall，macOS/Linux）
 - `install_skillbus.cmd`    Windows 安装壳（调 install_py.py，纯静态校验通过）

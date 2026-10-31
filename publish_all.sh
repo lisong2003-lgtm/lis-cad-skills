@@ -19,7 +19,7 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NODE_BIN="/Users/lis/.workbuddy/binaries/node/versions/22.22.2-6/bin"
+NODE_BIN="$HOME/.workbuddy/binaries/node/versions/22.22.2-6/bin"
 export PATH="$NODE_BIN:$HOME/.local/bin:$PATH"
 
 SKILLS=(cad-file-reader lis-skill-bus zhuangshi-suanliang

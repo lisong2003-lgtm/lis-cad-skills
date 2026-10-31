@@ -18,7 +18,7 @@ import skillbus as _bus  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="lis-skill-bus 客户端（skill 接线用）")
-    ap.add_argument("command", choices=["push", "pull", "list", "resolve"])
+    ap.add_argument("command", choices=["push", "pull", "list", "resolve", "find-contract", "detect"])
     ap.add_argument("--project", default="", help="项目标识")
     ap.add_argument("--building", default="", help="楼栋（可选）")
     ap.add_argument("--floor", default="", help="楼层（可选）")
@@ -27,6 +27,9 @@ def main() -> int:
     ap.add_argument("--contract", default="", help="resolve 的契约名")
     ap.add_argument("--out", default="", help="pull 输出到文件（可选）")
     ap.add_argument("--entry-id", default="", help="只取指定 entry（默认取 _last 或第一个）")
+    ap.add_argument("--source-file", default="", help="find-contract 原始图纸路径")
+    ap.add_argument("--source-sha256", default="", help="find-contract sha256（可选）")
+    ap.add_argument("--skill-dir", default="", help="detect 的目录")
     args = ap.parse_args()
 
     if args.command == "push":
@@ -67,6 +70,17 @@ def main() -> int:
 
     if args.command == "resolve":
         print(json.dumps(_bus.resolve_contract(args.contract), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "find-contract":
+        print(json.dumps(_bus.find_contract(args.project, args.building, args.floor,
+                                            args.source_file, args.source_sha256),
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "detect":
+        print(json.dumps(_bus.detect_skill(args.skill_dir or _bus.DEFAULT_SKILLS_DIR),
+                         ensure_ascii=False, indent=2))
         return 0
 
     return 2

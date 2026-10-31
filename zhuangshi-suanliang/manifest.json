@@ -1,6 +1,6 @@
 {
   "name": "zhuangshi-suanliang",
-  "version": "0.9.28",
+  "version": "0.9.29",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -23,8 +23,6 @@
     "scripts/self_test.py",
     "scripts/setup.sh",
     "scripts/smoke_utf8_json.py",
-    "scripts/tests/test_cad_measure_to_input.py",
-    "scripts/tests/test_decor_qty.py",
     "scripts/zhuangshi_statesync.py",
     "scripts/zhuangshi_statesync.sh",
     "scripts/zhuangshi_statesync.cmd"
@@ -50,9 +48,7 @@
     "templates/项目专属规则示例.json"
   ],
   "tests": [
-    "scripts/self_test.py",
-    "scripts/tests/test_cad_measure_to_input.py",
-    "scripts/tests/test_decor_qty.py"
+    "scripts/self_test.py"
   ],
   "privacy": "本机运行；脚本只处理用户提供的文件，不联网，不上传图纸或项目资料。",
   "notes": "计划口径估算，不替代清单计价、竣工结算或下料单。",

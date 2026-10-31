@@ -17,7 +17,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-CACHE_VERSION = 2
+# v3：图层名解码失败时改用 "#句柄" 作为图层身份（旧版会把整张图层表解成空串并落空图层）。
+# 不升版本会让旧缓存把「空图层」结果原样复用，修复等于白做。
+# v4：vendor 里的 ezdwg 由 0.12.6 升到 0.17.2——旧版对部分 DWG 会把图层名整表解成空串
+# （实测 J-1结构 106 个图层名全空），新版能全部解出真实名（DIM/COLU_HATCH/WALL…）。
+# 图层名从「#句柄降级」变成「真名」，证据内容整体变了，必须重新缓存。
+CACHE_VERSION = 4
 _TIMEOUT_MARKERS = (
     "解码超",
     "解码失败",

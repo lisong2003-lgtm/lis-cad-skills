@@ -109,7 +109,7 @@ bash scripts/yuanlin_qty.sh \
 ## 自测
 
 ```bash
-python3 scripts/tests/test_yuanlin_qty.py
+python3 scripts/tests（本机开发目录）
 ```
 
 覆盖：块级计数与同坐标去重、96m² 含 4m² 洞、mm 图 20m²、苗木表表头变体、数量单位证据链、冲突逐名对照、比例/单位证据链、块级/P2 三层分离、无图层强算双口径 P3 不计主线、无几何降级 review、英文植物块/块引用 P2、systems 种植文字 P2、DXF 块内 POLYLINE 变换 P3、DXF 同名块引用坐标去重 P0、植物名称参考库（JSON/xlsx/内置/图块素材库/分区苗木选型库，含价格不泄漏断言）、区域植物库多库加载与章节→大类修正、无标题苗木表（中文名称表头）识别与面积式数量=0 不计主线。`openpyxl` 缺失时自动跳过 xlsx 文件断言。

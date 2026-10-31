@@ -36,7 +36,7 @@
 ## 0.34.0 本地验证（2026-10-23 s4，修复 doctor 平台测试后）
 
 - self_test：summary ok=true，steps 5 pass / 1 skip（real_dwg_regression 无 manifest 跳过），unit 265 tests failures=0 errors=0 rc=0。
-- 修复内容：v0.34 在 doctor.py tier0 新增第 7 项能力 lis_skill_bus；同步 scripts/tests/test_doctor_platforms.py 的 CAPABILITIES 断言由 6→7，并允许 bus 状态（已安装/未装/禁用）；doctor.py 标签统一为「联动总线（推荐）」。修复后 265/0 全绿。
+- 修复内容：v0.34 在 doctor.py tier0 新增第 7 项能力 lis_skill_bus；同步 scripts/tests（本机开发目录） 的 CAPABILITIES 断言由 6→7，并允许 bus 状态（已安装/未装/禁用）；doctor.py 标签统一为「联动总线（推荐）」。修复后 265/0 全绿。
 - cad_validate：对 cad-file-reader/v0 契约样例 `ok=true, errors=[]`，exit=0。
 - lis-skill-bus 往返（假 bus，SKILLBUS_HOME=/tmp/fakebus）：push cad-scan-detail（text_records+geometry_segments）→ pull 返回 schema=cad-contract/v1、spec=cad-file-reader/v0、contract.text_records/geometry_segments 命中；按 bus schemas/cad-contract-v1.schema.json 结构字段全通过。
 - 降级路径：SKILLBUS_DISABLE=1 push/pull 无报错，写 $HOME/.codex/skills/.skillbus/state.json（13357B，含 floor=3、cad-contract/v1）。

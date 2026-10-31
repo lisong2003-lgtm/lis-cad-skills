@@ -20,7 +20,30 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cad_common import start_mem_guard  # noqa: E402
 from cad_contract import validate_contract_payload  # noqa: E402
+from cad_preflight import preflight_file  # noqa: E402
+
+
+def _scan_yield(detail_path: Path) -> dict:
+    """从 cad_scan 的 detail JSON 取“实际读出多少内容”，用于区分
+    “图纸没读进来”与“读进来了但领域候选为 0”这两类完全不同的问题。"""
+    out = {"text_total": None, "layers": None}
+    try:
+        d = json.loads(Path(detail_path).read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    files = d.get("files") or []
+    if files:
+        f = files[0]
+        out["text_total"] = f.get("texts")
+        out["layers"] = f.get("layers")
+    if out["text_total"] is None:
+        out["text_total"] = d.get("text_total")
+    if out["layers"] is None:
+        lv = d.get("layers")
+        out["layers"] = len(lv) if isinstance(lv, list) else lv
+    return out
 
 
 
@@ -47,6 +70,7 @@ def main() -> int:
     ap.add_argument("--work-dir", default="", help="临时工作目录前缀（默认用 /tmp）")
     ap.add_argument("--verify-cache", action="store_true", help="第二次运行同参 cad_scan 验证缓存命中")
     args = ap.parse_args()
+    guard = start_mem_guard(name="run_real_dwg_regression内存闸")
 
     manifest_path = Path(args.manifest)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -59,6 +83,7 @@ def main() -> int:
     work_root.mkdir(parents=True, exist_ok=True)
     results = []
     failed = 0
+    empty = 0
     PACK_GEO = {
         "electrical": ("cad_electrical_geometry.sh", ".electrical.json", ("drawing_types", "systems", "route_segments", "equipment", "circuits", "specs", "fire_protection", "weak_current", "intelligent_building")),
         "structural": ("cad_structural_geometry.sh", ".structural.json", ("drawing_types", "systems", "members", "rebars", "nodes", "grids", "structural_geometry")),
@@ -122,6 +147,16 @@ def main() -> int:
             if not dwg or not Path(dwg).exists():
                 item["status"] = "skip"; item["reason"] = "真图不存在"; item["path"] = dwg
                 results.append(item); continue
+            # 先做输入预检：版本不支持 / 损坏 / 过小等属“图纸本身不可用”，
+            # 不是识图能力缺陷，必须与“读进来了但领域候选为 0”分开统计，
+            # 否则报告会把“图根本没读进来”伪装成“提取能力不行”。
+            pf = preflight_file(dwg)
+            if not pf.get("ok"):
+                item["status"] = "skip"
+                item["reason"] = f"输入预检未通过：{pf.get('reason')}"
+                item["preflight_kind"] = pf.get("kind")
+                item["dwg_version"] = pf.get("version")
+                results.append(item); continue
             case_out = work_root / f"{cid}_scan"
             detail_path = work_root / f"{cid}_detail.json"
             cache_dir_arg = [str(work_root / "_cad_cache")] if args.verify_cache else []
@@ -142,6 +177,7 @@ def main() -> int:
         elif not detail_path.exists():
             item["status"] = "error"; item["reason"] = "复用详情不存在"
             results.append(item); failed += 1; continue
+        item.update(_scan_yield(detail_path))
         out_dir = work_root / f"{cid}_{kind}"
         pack_arg = DEEP_PACK_ARG.get(kind)
         if pack_arg:
@@ -180,7 +216,18 @@ def main() -> int:
             failed += 1
             results.append(item); continue
         if missing:
-            item["status"] = "fail"; item["reason"] = f"领域候选不足:{missing}"
+            texts = item.get("text_total")
+            if texts is None or int(texts or 0) == 0:
+                # 图纸一个字都没读出来：是“没读进来”，不是“提取不出”，属解析侧问题。
+                item["status"] = "error"
+                item["reason"] = "扫描零产出：cad_scan 未读出任何文字（图纸可能损坏/加密/非标格式，需看 stderr 里的解码报错）"
+            else:
+                # 读得出来但没有该领域候选：可能本图确实无此细分域，也可能规则不足，必须人工确认，
+                # 因此单独计 empty，不计入 failed，避免把“图纸没这个专业”误判为能力缺陷。
+                item["status"] = "empty"
+                item["reason"] = f"已读出 {texts} 条文字，但 {kind} 领域候选为 0（需人工确认：本图无此细分域，或提取规则不足）"
+                empty += 1
+                results.append(item); continue
             failed += 1
         elif args.verify_cache and scanned_here:
             # 已在本轮跑过 cad_scan 才验证缓存命中（复用详情时跳过）
@@ -207,7 +254,12 @@ def main() -> int:
             item["status"] = "pass"
         results.append(item)
 
-    report = {"schema": "cad-real-dwg-regression/v1", "manifest": manifest_path.name, "total": len(results), "passed": sum(1 for x in results if x["status"] == "pass"), "failed": failed, "results": results}
+    def _n(st):
+        return sum(1 for x in results if x["status"] == st)
+
+    report = {"schema": "cad-real-dwg-regression/v2", "manifest": manifest_path.name, "total": len(results),
+              "passed": _n("pass"), "empty": _n("empty"), "skipped": _n("skip"), "failed": failed,
+              "mem_guard": guard, "results": results}
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.report_json:
         Path(args.report_json).write_text(text + "\n", encoding="utf-8")

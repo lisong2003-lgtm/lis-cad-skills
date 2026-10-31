@@ -18,7 +18,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RULES_PATH = ROOT / "packs" / "structural-geometry" / "rules.json"
 from cad_contract import contractize_payload
-from cad_common import compact, load_rules, match_rule
+from cad_common import compact, load_rules, match_rule, start_mem_guard
+from cad_axis_net import axis_nets
+
+# 轴网候选的保留/可用门槛：0.5 是「间距有重复形态」的下限，
+# 低于它基本是把墙线/标注当轴线抓出来的。
+AXIS_NET_KEEP = 0.30
+AXIS_NET_USABLE = 0.50
 
 
 def data_file_name(data, value):
@@ -183,7 +189,18 @@ def member_candidates(records, rules):
 
 def rebar_candidates(records, rules):
     out, seen = [], set()
-    regex = re.compile(rules.get("rebar_pattern") or r"(?<![A-Za-z0-9])([A-Z]?\d{1,3}[A-Z]?(?:@|[-@])\d{2,3}(?:\(\d+\))?|[A-Z]{2,5}\d|\d+\s*[xX×])", re.I)
+    # 兜底正则（规则文件未给 rebar_pattern 时使用），与 packs/structural-geometry/rules.json 保持一致。
+    # 注意：绝不能出现 `\d+\s*[xX×]\s*\d+` 这类“纯数字×数字”分支——那会把梁截面、图幅、
+    # 加长尺寸全部误判成配筋（实测 448/448 全误判）。配筋必须有钢筋语义（等级符号/@间距/根数×直径）。
+    _FALLBACK = (
+        r"(?<![A-Za-z0-9])("
+        r"%%13[0-2]\d{1,2}(?:\s*@\s*\d{2,4}(?:/\d{2,4})?(?:\(\d+\))?)?(?:\s*[xX×]\s*\d+(?:\s*[xX×]\s*\d+)*)?"
+        r"|\d+\s*(?:%%13[0-2]|[Φφ])\s*\d{1,2}"
+        r"|[Φφ]\s*\d{1,2}(?:\s*@\s*\d{2,4}(?:/\d{2,4})?(?:\(\d+\))?)?"
+        r"|(?:HPB300|HRB300|HRB335|HRB400|HRB500|CRB550|RRB400|[ABC]\d{1,2})(?:\s+\d{1,2})?\s*@\s*\d{2,4}(?:/\d{2,4})?(?:\(\d+\))?"
+        r")"
+    )
+    regex = re.compile(rules.get("rebar_pattern") or _FALLBACK, re.I)
     for rec in records:
         for m in regex.finditer(rec["text"]):
             value = compact(m.group(0)).upper()
@@ -209,19 +226,40 @@ def node_candidates(records, rules):
     return out
 
 
+# 轴网图层名。实测这批图纸里轴网在 结_轴线 / 结_轴线尺寸 / AXIS / AXIS_TEXT /
+# AXIS_NUM / SOCK-DOTE 上；而 TEL_TEXT / TEXT_喷淋 / DIM-照明 / 图框 上的短词
+# 是电话、喷淋、图签内容，形态上一样像轴号，只能靠图层区分。
+AXIS_LAYER = re.compile(r"轴|AXIS|SOCK-DOTE|GRID|定位", re.I)
+# 严格轴号形态，与 drawing_relation.AXIS_SHAPE 保持同一口径（两处都要改）
+AXIS_SHAPE = re.compile(r"^(?:\d{1,3}|[A-Z]{1,2}|\d{1,3}[/-][A-Z0-9]{1,3}|[A-Z][/-]\d{1,3})$")
+
+
 def grid_candidates(records, rules):
     out, seen = [], set()
     regex = re.compile(rules.get("grid_pattern") or r"(?<![A-Za-z0-9])([A-Z]{1,3}\d{0,3}|[一二三四五六七八九十]+)|\s*(?:轴|标高)\s*[-+]?\d+(?:\.\d+)?", re.I)
     for rec in records:
+        # 图层是硬前提。实测 8 万个 grid 候选里只有 0.6% 落在轴网图层上，
+        # 其余来自 TEL_TEXT / TEXT_喷淋 / DIM-照明 / 图框——那是电话、喷淋、照明
+        # 图签里的短词（PVC/SBS/C20/Co/Ltd），不是轴号。不加这一层过滤，
+        # 任何「轴网重叠度」都只是噪声平均，看着有数其实是假的。
+        on_axis = bool(AXIS_LAYER.search(rec.get("layer") or ""))
         for m in regex.finditer(rec["text"]):
             value = compact(m.group(0))
             if not value:
+                continue
+            # 非轴网图层只留形态严格像轴号的值（1~3 位数字 / 1~2 位大写字母 / 组合），
+            # 并且标 axis_layer=False 让下游知道「这条证据弱」。
+            if not on_axis and not AXIS_SHAPE.match(value):
                 continue
             key = (context_of(rec), value, rec.get("layer"), rec.get("x"), rec.get("y"))
             if key in seen:
                 continue
             seen.add(key)
-            out.append({"type": "grid", "value": value, "layer": rec.get("layer"), "file": rec.get("file_name"), "sheet": rec.get("sheet"), "x": rec.get("x"), "y": rec.get("y"), "confidence": float((rules.get("confidence") or {}).get("pattern_match", 0.78)), "status": "candidate", "evidence": [evidence_of(rec)]})
+            out.append({"type": "grid", "value": value, "layer": rec.get("layer"), "file": rec.get("file_name"), "sheet": rec.get("sheet"), "x": rec.get("x"), "y": rec.get("y"),
+                        "axis_layer": on_axis,
+                        "confidence": float((rules.get("confidence") or {}).get(
+                            "direct_label" if on_axis else "pattern_match", 0.95 if on_axis else 0.78)),
+                        "status": "candidate", "evidence": [evidence_of(rec)]})
     return out
 
 
@@ -238,6 +276,64 @@ def structural_geometry(data, rules):
     return out, unmatched
 
 
+def axis_net_candidates(data):
+    """按文件抽取几何轴网。
+
+    轴号文字在天正转出的图里基本抓不到（实测轴网图层 0 条文字），
+    跨专业对照只能靠轴线本身的几何位置。这里按文件分别算，不跨文件混。
+    """
+    out = []
+    segment_files = data.get("geometry_segments") or []
+    layer_files = data.get("geometry_layers") or []
+    for fi, segments in enumerate(segment_files):
+        layers = layer_files[fi] if fi < len(layer_files) else []
+        nets = axis_nets(segments or [], layers or [])
+        fname = data_file_name(data, fi)
+        for net in nets:
+            if net["score"] < AXIS_NET_KEEP:
+                continue
+            net["file"] = fname
+            out.append(net)
+    # 每方向最多留 12 个，够下游比对，又不让产物膨胀
+    kept, seen = [], Counter()
+    for net in sorted(out, key=lambda n: -n["score"]):
+        if seen[net["direction"]] >= 12:
+            continue
+        seen[net["direction"]] += 1
+        kept.append(net)
+    return kept
+
+
+def tightening_geometry(payload, ndigits: int = 1) -> dict:
+    """落地前瘦身：evidence 去重 + 坐标降到 0.1mm（图面毫米单位足够，防 JSON 膨胀）。"""
+    def rnd(v):
+        if isinstance(v, float) and v == v and v not in (float('inf'), float('-' + 'inf')):
+            return round(v, ndigits)
+        return v
+    for row in (payload.get('structural_geometry') or []):
+        cleaned = []
+        seen = set()
+        for ev in (row.get('evidence') or []):
+            coord = ev.get('coord')
+            new_coord = [rnd(c) for c in coord] if isinstance(coord, list) else coord
+            key = (tuple(new_coord) if isinstance(new_coord, list) else new_coord,
+                   ev.get('layer'), ev.get('kind'), ev.get('file'),
+                   ev.get('file_name'), ev.get('sheet'))
+            if key in seen:
+                continue
+            seen.add(key)
+            e2 = dict(ev)
+            if isinstance(coord, list):
+                e2['coord'] = new_coord
+            cleaned.append(e2)
+        if cleaned:
+            row['evidence'] = cleaned
+        g = row.get('geometry')
+        if isinstance(g, list):
+            row['geometry'] = [rnd(c) for c in g]
+    return payload
+
+
 def analyze_file(path, rules):
     data = json.loads(path.read_text(encoding="utf-8"))
     records = read_records(data)
@@ -249,6 +345,8 @@ def analyze_file(path, rules):
     nodes = node_candidates(records, rules)
     grids = grid_candidates(records, rules)
     geometry, unmatched_layers = structural_geometry(data, rules)
+    nets = axis_net_candidates(data)
+    usable_nets = [n for n in nets if n["score"] >= AXIS_NET_USABLE and n["gap_kinds"] >= 2]
     review = []
     if not views:
         review.append({"type": "drawing_type", "reason": "未识别到结构图纸类型文字", "evidence": []})
@@ -257,10 +355,17 @@ def analyze_file(path, rules):
             review.append({"type": "scale_unit", "reason": row.get("review_reason") or "比例或单位需确认", "evidence": row.get("evidence", [])})
     if not data.get("geometry_segments") or not data.get("geometry_layers"):
         review.append({"type": "input_geometry", "reason": "输入缺少 geometry_segments 或 geometry_layers；请用 cad_scan --with-geom --with-geom-layer", "evidence": []})
+    elif data.get("geometry_segments") and not usable_nets:
+        # 有几何但提不出轴网：说清楚，别让下游以为「这图没有轴网」
+        review.append({"type": "axis_net", "reason": "几何段里未提取到可用轴网（轴线可能被画成多段短线，或不落在轴网图层），跨专业轴网核对将退回文字口径", "evidence": [{"geometry_segments": sum(len(s or []) for s in (data.get("geometry_segments") or []))}]})
     for layer, count in unmatched_layers.most_common(50):
         review.append({"type": "structural_layer", "reason": f"结构图层未分类：{layer}（{count} 段）", "evidence": [{"layer": layer}]})
-    summary = {"drawing_types": len(views), "systems": len(systems), "members": len(members), "rebars": len(rebars), "nodes": len(nodes), "grids": len(grids), "structural_geometry": len(geometry), "review_items": len(review)}
-    return {"schema": "cad-structural-geometry/v1", "source_file": path.name, "summary": summary, "drawing_types": views, "scale_unit_audit": audit, "systems": systems, "members": members, "rebars": rebars, "nodes": nodes, "grids": grids, "structural_geometry": geometry, "review": review, "boundary": "只输出结构识图候选、证据和复核项；不输出混凝土体积、钢筋吨位、长度汇总、材料量、造价或结算量。"}
+    summary = {"drawing_types": len(views), "systems": len(systems), "members": len(members), "rebars": len(rebars), "nodes": len(nodes), "grids": len(grids), "axis_nets": len(nets), "axis_nets_usable": len(usable_nets), "structural_geometry": len(geometry), "review_items": len(review)}
+    return {"schema": "cad-structural-geometry/v1", "source_file": path.name,
+            # 透传 cad_scan 记下的源图路径：下游按目录聚类、跨专业配对要用，
+            # 只留产物名会让不同专业的图纸落进同一个簇。
+            "source_paths": data.get("source_paths") or [],
+            "summary": summary, "drawing_types": views, "scale_unit_audit": audit, "systems": systems, "members": members, "rebars": rebars, "nodes": nodes, "grids": grids, "axis_nets": nets, "structural_geometry": geometry, "review": review, "boundary": "只输出结构识图候选、证据和复核项；不输出混凝土体积、钢筋吨位、长度汇总、材料量、造价或结算量。"}
 
 
 def write_markdown(payload, path):
@@ -331,6 +436,7 @@ def main():
     parser.add_argument("--out-dir", default="结构识图")
     parser.add_argument("--rules", default=str(RULES_PATH))
     args = parser.parse_args()
+    guard = start_mem_guard(name="cad_structural_geometry内存闸")
     rules = load_rules(Path(args.rules))
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -341,12 +447,13 @@ def main():
             raise FileNotFoundError(src)
         payload = analyze_file(src, rules)
         payload = contractize_payload(payload, source=src.name)
+        payload = tightening_geometry(payload)
         jp, mp, cp = out_dir / f"{src.stem}.structural.json", out_dir / f"{src.stem}.structural.md", out_dir / f"{src.stem}.structural.csv"
-        jp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        jp.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         write_markdown(payload, mp)
         write_csv(payload, cp)
         outputs.append(f"已写出 {jp}")
-    print(json.dumps({"source": [str(x) for x in args.inputs], "summary": payload["summary"], "outputs": [str(x) for x in (jp, mp, cp)]}, ensure_ascii=False))
+    print(json.dumps({"source": [str(x) for x in args.inputs], "mem_guard": guard, "summary": payload["summary"], "outputs": [str(x) for x in (jp, mp, cp)]}, ensure_ascii=False, separators=(",", ":")))
 
 
 if __name__ == "__main__":

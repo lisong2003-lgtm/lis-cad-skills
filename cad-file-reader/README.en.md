@@ -29,7 +29,13 @@ Python 3; supported DWG parsing uses public PyPI packages (ezdwg/ezdxf/fonttools
 ## Privacy
 Fully local; drawing bytes never leave your machine. No cloud OCR, no uploads.
 
-## Boundaries / limitations
+## Contract flow & ODA fallback (verified locally 2026-10-31)
+
+- DWG/DXF is parsed **once** by cad-file-reader (`cad_scan`/`cad_contract`) into a `cad-file-reader/v0` contract; quantity/clash skills consume only the contract JSON and do not re-parse the drawing themselves. `CODEX_DIRECT`/`CAD_ALLOW_DIRECT` are not set by default (explicit escape hatch exists for regression/debug only).
+- For the medical-university structure drawings `sample-struct-A.dwg` / `sample-struct-B.dwg` (review versions), the fixed path is: copy a working copy, convert it to DXF with `ODAFileConverter` on the copy only (never overwrite the original), then re-scan the copy DXF with `cad_scan --dwg-dxf-fallback --with-geom`. The converted DXF is a reproduction artifact, not authoritative original-bytes evidence.
+- Verified replay: structure 2# texts=12054 / layers=356 / geometry_segments=37831 / sheets=22; structure 3# texts=13407 / layers=351 / geometry_segments=42002 / sheets=24. Working-copy DWG sha256 matched the originals; only the DXF copy was parsed.
+- All outputs remain candidates with `final_quantity=false`; no final quantity or cost conclusions.
+
 - The skill returns review candidates, not final quantities or legal/engineering sign-off.
 - Large drawings above the entrance gate (default 40 MB) are normally parsed with the low-memory scanner; full-parse options are available but watch memory.
 - `-` English output is a lightweight layer: help, JSON status/message/error and this README are localized; some deep report labels and stored Chinese data remain as-is.

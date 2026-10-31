@@ -48,7 +48,7 @@ case "$MODE" in
     if registered; then
       info "检测到 config 已注册 $SECTION_LINE → 保持幂等，不会重复写入。"
     else
-      info "将注册: $SECTION_LINE（SKIP_MCP_REG=1 时跳过）"
+      info "将注册: $SECTION_LINE （SKIP_MCP_REG=1 时跳过）"
     fi
     exit 0
     ;;
@@ -57,7 +57,7 @@ case "$MODE" in
       cp "$CONFIG" "$CONFIG.skillbus.$(date +%Y%m%d%H%M%S).bak"
       awk -v pat="$SECTION_LINE" '$0==pat {skip=1; next} skip && /^\[/ {skip=0} !skip' "$CONFIG" > "$CONFIG.tmp"
       mv "$CONFIG.tmp" "$CONFIG"
-      ok "已移除 $SECTION_LINE（config 已备份；bus 文件保留在 $BUS_DIR）"
+      ok "已移除 $SECTION_LINE （config 已备份；bus 文件保留在 $BUS_DIR）"
     else
       ok "未注册 MCP，无需卸载。"
     fi

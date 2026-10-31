@@ -778,7 +778,33 @@ def csv_rows(report: dict[str, Any]) -> list[list[str]]:
     return out
 
 
+def _start_mem_guard(name: str = "tujian_quantity内存闸") -> str:
+    """挂 cad-file-reader 的进程内内存看门狗；底座不在时降级返回原因，不阻断主流程。"""
+    root = Path.home()
+    candidates = []
+    override = os.environ.get("CAD_SKILL_DIR", "").strip()
+    if override:
+        candidates.append(Path(override).expanduser() / "scripts")
+    for parent in list(Path(__file__).resolve().parents)[1:4]:
+        candidates.append(parent / "cad-file-reader" / "scripts")
+    candidates.extend([
+        root / ".workbuddy" / "skills" / "cad-file-reader" / "scripts",
+        root / ".codex" / "skills" / "cad-file-reader" / "scripts",
+    ])
+    for candidate in candidates:
+        if (candidate / "cad_common.py").is_file():
+            try:
+                if str(candidate) not in sys.path:
+                    sys.path.insert(0, str(candidate))
+                from cad_common import start_mem_guard
+                return start_mem_guard(name=name)
+            except Exception as exc:
+                return f"degraded:{type(exc).__name__}:{exc}"
+    return "unavailable:cad-file-reader 未找到"
+
+
 def main() -> int:
+    mem_guard = _start_mem_guard()
     raw = sys.argv[1:]
     lang = i18n.argv_lang(raw)
     desc = ("CAD single-floor concrete estimate & gap report." if lang == "en" else "CAD 单层混凝土初算与缺口报告")

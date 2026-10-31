@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 from collections import Counter
 from pathlib import Path
@@ -111,10 +112,21 @@ def system_candidates(records: list[dict[str, Any]], data: dict[str, Any], rules
 def component_candidates(records: list[dict[str, Any]], rules: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
+    system_rules = rules.get("system_rules") or []
     for rec in records:
         category, rule, pattern = match_rule(f"{rec['text']} {rec.get('layer', '')}", rules.get("component_rules") or [], "category")
         if not category:
             continue
+        # 系统名先看**本图文字**，只有文字认不出时才退回构件规则带的系统。
+        # 原来直接用构件规则的系统，实测sample-road室外管网图里「给水」「雨水」「中水」
+        # 全落在 DIM_污水 图层上，于是被统统标成 sewage——按系统统计管线数量时
+        # 给水和污水会混成一笔账，这正是「快速提取想要的数据」最不能忍的错。
+        system, system_rule, _sys_pattern = match_rule(rec["text"], system_rules, "system")
+        if system and _negative_hit(rec["text"], system_rule):
+            system = ""
+        system_basis = "text" if system else "component_rule"
+        if not system:
+            system = (rule or {}).get("system") or ""
         key = (context_of(rec), category, rec["text"], rec.get("layer"), rec.get("x"), rec.get("y"))
         if key in seen:
             continue
@@ -122,9 +134,10 @@ def component_candidates(records: list[dict[str, Any]], rules: dict[str, Any]) -
         out.append({
             "type": "component",
             "category": category,
-            "system": (rule or {}).get("system") or "",
+            "system": system,
             "raw": rec["text"],
             "pattern": pattern,
+            "system_basis": system_basis,
             "layer": rec.get("layer"),
             "file": rec.get("file_name"),
             "sheet": rec.get("sheet"),
@@ -310,13 +323,233 @@ def municipal_geometry(data: dict[str, Any], rules: dict[str, Any]) -> tuple[lis
     return out, unmatched
 
 
+ANNO_LAYER_RE = re.compile(r"DIM|TEXT|ANNO|标注|文字|PUB_TITLE|图框|TITLE", re.I)
+
+
+def entity_geometry(data: dict[str, Any], rules: dict[str, Any],
+                    records: list[dict[str, Any]] | None = None,
+                    legend_tol: float = 35000.0,
+                    min_radius: float = 10.0,
+                    segments: list[dict[str, Any]] | None = None,
+                    far_tol: float = 5000.0) -> tuple[list[dict[str, Any]], Counter]:
+    """圆实体几何（井圈/池边/检查井等块实体候选）。
+
+    来源：cad_scan --with-geom 的 detail.geometry_entities，行 = [x, y, r, layer, file_index]。
+    标注类图层（DIM/TEXT/标注等）上的圆是索引符号/标注圈，剔除并计数，不冒充构件。
+    图例区剔除：紧邻「图例」文字（≤legend_tol）的圆是图例符号样板，不是图中实体，
+    剔除并计数（真图教训：管网总图 42 个图例圆曾产生 2000 个伪碰撞候选）。
+    微圆剔除：r < min_radius 的圆是线面装饰（实测路缘石圆角 r=4 曾产生 2000 个
+    伪候选），不是可判碰撞的实体，剔除并计数。
+    远线剔除（人工标注驱动）：圆实体必须挂在市政线段上，距最近市政线段
+    > far_tol 的是图框角落/系统图图框的符号（实测：海绵图 24 个圆距最近管线
+    183 万图面单位），剔除并计数。
+    等距符号列剔除（人工标注驱动）：同列（x±125）≥3 个圆、y 向间距近均匀
+    （每个间距≈整数倍中位间距，容差 15%）且间距≥2×最大半径 → 设备表/图例
+    符号列（实测：管网总图 EQUIP_消防 4 列沿 y 等距 882，人工标注确认为设备表
+    符号），剔除并计数。真沿路等距布置的设备同样可能命中——本剔除带计数、
+    可从 review 追溯，属保守换precision。
+    异图框剔除（人工标注驱动）：多图框 DWG 中，实体图框与市政线段主图框
+    （线段最多的 sheet）不一致、且就近线段也不在主图框 → 该图框是大样/设备表
+    内容，与平面网不构成同源坐标可比，剔除并计数。
+    类别仍走图层规则映射，未映射 → unclassified_entity（review），不编造语义。
+    """
+    out: list[dict[str, Any]] = []
+    excluded: Counter = Counter()
+    unmatched: Counter = Counter()
+    legend_anchors = [(float(r["x"]), float(r["y"]))
+                      for r in (records or [])
+                      if "图例" in str(r.get("text") or "") and r.get("x") is not None]
+    layer_patterns = [str(x).upper() for x in (rules.get("municipal_layer_patterns") or [])]
+    for row in data.get("geometry_entities") or []:
+        if not isinstance(row, (list, tuple)) or len(row) < 4:
+            continue
+        try:
+            x, y, r = float(row[0]), float(row[1]), float(row[2])
+        except (TypeError, ValueError):
+            continue
+        layer = str(row[3] or "")
+        fi = int(row[4]) if len(row) > 4 and str(row[4]).lstrip("-").isdigit() else 0
+        if r < min_radius:
+            excluded[f"微圆(<{min_radius:g})({layer or '<空图层>'})"] += 1
+            continue
+        if ANNO_LAYER_RE.search(layer):
+            excluded[layer or "<空图层>"] += 1
+            continue
+        if any(((x - ax) ** 2 + (y - ay) ** 2) ** 0.5 <= legend_tol for ax, ay in legend_anchors):
+            excluded[f"图例区({layer or '<空图层>'})"] += 1
+            continue
+        if layer_patterns and not any(token in layer.upper() for token in layer_patterns):
+            unmatched[layer or "<空图层>"] += 1
+            continue
+        category, rule, pattern = match_rule(layer, rules.get("component_rules") or [], "category")
+        status = "candidate" if category else "review"
+        out.append({
+            "type": "municipal_entity",
+            "kind": "entity",
+            "etype": "circle",
+            "category": category or "unclassified_entity",
+            "system": (rule or {}).get("system") or "",
+            "pattern": pattern,
+            "layer": layer,
+            "file": data_file_name(data, fi),
+            "file_index": fi,
+            "sheet": sheet_for_point(data, x, y),
+            "x": round(x, 3),
+            "y": round(y, 3),
+            "r": round(r, 3),
+            "geometry": [round(x - r, 3), round(y - r, 3), round(x + r, 3), round(y + r, 3)],
+            "confidence": float((rules.get("confidence") or {}).get("geometry_pattern", 0.86)),
+            "status": status,
+            "review_reason": "" if status == "candidate" else "圆实体图层未映射到构件类别",
+            "evidence": [{"layer": layer, "kind": "circle_entity", "coord": [round(x, 3), round(y, 3), round(r, 3)], "file": data_file_name(data, fi)}],
+        })
+        if status != "candidate":
+            unmatched[layer or "<空图层>"] += 1
+
+    # —— 人工标注驱动的三类符号剔除（0.39.1，范村 B 对 ground truth）——
+    kept = out
+    seg_rows: list[tuple[float, float, float, float, Any]] = []
+    for s in segments or []:
+        g = s.get("geometry") or []
+        if len(g) >= 4:
+            seg_rows.append((float(g[0]), float(g[1]), float(g[2]), float(g[3]), s.get("sheet")))
+    if out and seg_rows:
+        for e in out:
+            best, best_sheet = 1e18, None
+            for x1, y1, x2, y2, sh in seg_rows:
+                dx, dy = x2 - x1, y2 - y1
+                L2 = dx * dx + dy * dy
+                if L2 <= 0:
+                    dd = math.hypot(e["x"] - x1, e["y"] - y1)
+                else:
+                    t = max(0.0, min(1.0, ((e["x"] - x1) * dx + (e["y"] - y1) * dy) / L2))
+                    dd = math.hypot(e["x"] - (x1 + t * dx), e["y"] - (y1 + t * dy))
+                if dd < best:
+                    best, best_sheet = dd, sh
+            e["_seg_dist"], e["_seg_sheet"] = best, best_sheet
+        # 远线剔除
+        stage: list[dict[str, Any]] = []
+        for e in out:
+            if e["_seg_dist"] > far_tol:
+                excluded[f"远线符号({e['layer']})"] += 1
+            else:
+                stage.append(e)
+        # 等距符号列剔除
+        cols: dict[int, list[dict[str, Any]]] = {}
+        for e in stage:
+            cols.setdefault(int(round(e["x"] / 250.0)), []).append(e)
+        drop_ids: set[int] = set()
+        for members in cols.values():
+            if len(members) < 3:
+                continue
+            ys = sorted(m["y"] for m in members)
+            gaps = sorted(b - a for a, b in zip(ys, ys[1:]) if b - a > 1e-6)
+            if len(gaps) < 2:
+                continue
+            med = gaps[len(gaps) // 2]
+            if med < 2 * max(m["r"] for m in members):
+                continue  # 间距小于直径：重叠/堆叠而非符号列
+            if all(abs(g - max(1, round(g / med)) * med) <= 0.15 * med for g in gaps):
+                drop_ids.update(id(m) for m in members)
+        if drop_ids:
+            stage = [e for e in stage if id(e) not in drop_ids]
+            for e in [e for e in out if id(e) in drop_ids]:
+                excluded[f"等距符号列({e['layer']})"] += 1
+        # 异图框剔除
+        primary_sheet = Counter(sh for _, _, _, _, sh in seg_rows).most_common(1)[0][0]
+        kept = []
+        for e in stage:
+            if (e.get("sheet") is not None and primary_sheet is not None
+                    and e["sheet"] != primary_sheet and e["_seg_sheet"] != primary_sheet):
+                excluded[f"异图框符号(sheet{e['sheet']}≠主图框{primary_sheet})"] += 1
+            else:
+                kept.append(e)
+        for e in out:
+            e.pop("_seg_dist", None)
+            e.pop("_seg_sheet", None)
+    return kept, excluded + unmatched
+
+
+DIA_TEXT_RE = re.compile(r"^(?:DN|De|D|d|Φ|φ)\s*\d{2,4}(?:\s*[-~－]\s*(?:DN|De|D|d|Φ|φ)?\s*\d{2,4})?$", re.I)
+
+
+def diameter_pool(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """独立管径标注文字池：DN150 / de315 / DN350-400 这类整条文字就是管径。"""
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        text = compact(rec.get("text"))
+        if not text or not DIA_TEXT_RE.match(text):
+            continue
+        try:
+            x, y = float(rec.get("x")), float(rec.get("y"))
+        except (TypeError, ValueError):
+            continue
+        out.append({"text": text, "x": x, "y": y, "sheet": rec.get("sheet")})
+    return out
+
+
+def _nearest_diameter(x: float, y: float, sheet: Any,
+                      pool: list[dict[str, Any]], tol: float) -> dict[str, Any] | None:
+    best: dict[str, Any] | None = None
+    best_d = tol
+    for d in pool:
+        if sheet is not None and d.get("sheet") not in (sheet, None):
+            continue
+        dist = ((x - d["x"]) ** 2 + (y - d["y"]) ** 2) ** 0.5
+        if dist <= best_d:
+            best_d = dist
+            best = d
+    return best
+
+
+def attach_diameters(pipes: list[dict[str, Any]], geometry: list[dict[str, Any]],
+                     pool: list[dict[str, Any]], tol: float) -> dict[str, int]:
+    """把就近独立管径标注挂到管道标注（pipe_size）与管线线段（diameter）。
+
+    图面标注常把管径单独写在管线旁（不在同一文字里），就近距离内取唯一
+    最近者；带 diameter_basis=nearby_text 与距离，供复核。不改动已有管径。
+    """
+    if not pool:
+        return {"pipe_attached": 0, "geometry_attached": 0}
+    n_pipe = n_geom = 0
+    for p in pipes or []:
+        if p.get("pipe_size"):
+            continue
+        try:
+            x, y = float(p.get("x")), float(p.get("y"))
+        except (TypeError, ValueError):
+            continue
+        hit = _nearest_diameter(x, y, p.get("sheet"), pool, tol)
+        if hit:
+            p["pipe_size"] = hit["text"]
+            p["pipe_size_basis"] = "nearby_text"
+            p["pipe_size_dist"] = round(((x - hit["x"]) ** 2 + (y - hit["y"]) ** 2) ** 0.5, 1)
+            if p.get("status") == "review" and str(p.get("review_reason") or "").startswith("识别到市政管道但未提取到管径"):
+                p["status"] = "candidate"
+                p["review_reason"] = ""
+            n_pipe += 1
+    for g in geometry or []:
+        geo = g.get("geometry")
+        if not (isinstance(geo, (list, tuple)) and len(geo) >= 4) or g.get("diameter"):
+            continue
+        cx, cy = (float(geo[0]) + float(geo[2])) / 2.0, (float(geo[1]) + float(geo[3])) / 2.0
+        hit = _nearest_diameter(cx, cy, g.get("sheet"), pool, tol)
+        if hit:
+            g["diameter"] = hit["text"]
+            g["diameter_basis"] = "nearby_text"
+            n_geom += 1
+    return {"pipe_attached": n_pipe, "geometry_attached": n_geom}
+
+
 def connectivity_audit(geometry: list[dict[str, Any]], tolerance: float = 5.0, max_segments: int = 5000) -> dict[str, Any]:
     result = _steel_connectivity_audit(geometry, tolerance, max_segments)
     result["boundary"] = "只做端点吸附和市政构件连通性候选；不输出长度汇总、面积、数量、工程量或材料量。"
     return result
 
 
-def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float) -> dict[str, Any]:
+def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float,
+                 legend_tolerance: float = 35000.0,
+                 entity_far_tol: float = 5000.0) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     records = read_records(data)
     views = drawing_type_candidates(records, rules)
@@ -328,7 +561,17 @@ def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float) -> di
     references = reference_candidates(records, rules)
     labels = label_candidates(records, rules)
     geometry, unmatched_layers = municipal_geometry(data, rules)
+    entities, unmatched_entities = entity_geometry(data, rules, records, legend_tolerance,
+                                                   segments=geometry, far_tol=entity_far_tol)
+    legend_excluded = sum(n for k, n in unmatched_entities.items() if str(k).startswith("图例区"))
+    tiny_excluded = sum(n for k, n in unmatched_entities.items() if str(k).startswith("微圆"))
+    far_excluded = sum(n for k, n in unmatched_entities.items() if str(k).startswith("远线符号"))
+    column_excluded = sum(n for k, n in unmatched_entities.items() if str(k).startswith("等距符号列"))
+    sheet_excluded = sum(n for k, n in unmatched_entities.items() if str(k).startswith("异图框符号"))
     connectivity = connectivity_audit(geometry, snap_tolerance)
+    dia_stats = attach_diameters(pipes, geometry,
+                                 diameter_pool(records),
+                                 float(rules.get("dia_tolerance") or 0) or snap_tolerance * 20 or 10000.0)
     review: list[dict[str, Any]] = []
     if not views:
         review.append({"type": "drawing_type", "reason": "未识别到市政图纸类型文字", "evidence": []})
@@ -339,6 +582,19 @@ def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float) -> di
         review.append({"type": "input_geometry", "reason": "输入缺少 geometry_segments 或 geometry_layers；请用 cad_scan --with-geom --with-geom-layer", "evidence": []})
     for layer, count in unmatched_layers.most_common(50):
         review.append({"type": "municipal_layer", "reason": f"市政图层未分类：{layer}（{count} 段）", "evidence": [{"layer": layer}]})
+    if (data.get("geometry_entities") and not entities
+            and not (legend_excluded or tiny_excluded or far_excluded or column_excluded or sheet_excluded)):
+        review.append({"type": "entity_geometry", "reason": "输入含圆实体但无一个落在市政图层（多为建筑底图参照或标注符号）", "evidence": []})
+    if legend_excluded:
+        review.append({"type": "entity_legend", "reason": f"圆实体 {legend_excluded} 个位于「图例」文字邻域，判为图例符号剔除", "evidence": []})
+    if tiny_excluded:
+        review.append({"type": "entity_tiny", "reason": f"微圆 {tiny_excluded} 个（半径<10 图面单位）判为线面装饰剔除", "evidence": []})
+    if far_excluded:
+        review.append({"type": "entity_far", "reason": f"圆实体 {far_excluded} 个距最近市政线段超限，判为图框角落/系统图符号剔除", "evidence": []})
+    if column_excluded:
+        review.append({"type": "entity_column", "reason": f"圆实体 {column_excluded} 个呈等距符号列排列，判为设备表/图例符号剔除（人工标注确认口径）", "evidence": []})
+    if sheet_excluded:
+        review.append({"type": "entity_sheet", "reason": f"圆实体 {sheet_excluded} 个位于非主图框（大样/设备表图框），剔除", "evidence": []})
     if pipes and not any(row.get("status") == "candidate" for row in pipes):
         review.append({"type": "pipe_size", "reason": "识别到市政管道但未提取到管径或断面尺寸", "evidence": []})
     if components and not materials:
@@ -352,6 +608,12 @@ def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float) -> di
         "references": len(references),
         "labels": len(labels),
         "geometry_segments": len(geometry),
+        "entities": len(entities),
+        "entities_legend_excluded": legend_excluded,
+        "entities_far_excluded": far_excluded,
+        "entities_column_excluded": column_excluded,
+        "entities_sheet_excluded": sheet_excluded,
+        "diameters_attached": dia_stats,
         "connectivity_open_endpoints": connectivity["summary"]["open_endpoints"],
         "connectivity_junctions": connectivity["summary"]["junction_candidates"],
         "review_items": len(review),
@@ -369,6 +631,7 @@ def analyze_file(path: Path, rules: dict[str, Any], snap_tolerance: float) -> di
         "references": references,
         "labels": labels,
         "municipal_geometry": geometry,
+        "entities": entities,
         "connectivity": connectivity,
         "review": review,
         "boundary": "只输出市政专业识图候选、证据和连通性审计；不输出面积、长度汇总、数量、材料量、造价或结算量。",
@@ -381,7 +644,7 @@ def write_markdown(payload: dict[str, Any], path: Path) -> None:
         "# 市政专业识图 / 中间数据复核",
         "",
         f"- 源文件：`{payload['source_file']}`",
-        f"- 候选：图纸类型 {s['drawing_types']}，专业系统 {s['systems']}，构件 {s['components']}，管道 {s['pipe_candidates']}，材料 {s['materials']}，引用 {s['references']}，标注 {s['labels']}，几何段 {s['geometry_segments']}，待复核 {s['review_items']}",
+        f"- 候选：图纸类型 {s['drawing_types']}，专业系统 {s['systems']}，构件 {s['components']}，管道 {s['pipe_candidates']}，材料 {s['materials']}，引用 {s['references']}，标注 {s['labels']}，几何段 {s['geometry_segments']}，圆实体 {s['entities']}，待复核 {s['review_items']}",
         f"- 连通性：开放端点 {s['connectivity_open_endpoints']}，汇聚节点 {s['connectivity_junctions']}",
         "",
         "## 图纸类型",
@@ -471,9 +734,17 @@ def main() -> int:
     parser.add_argument("--out-dir", default="市政识图", help="输出目录")
     parser.add_argument("--rules", default=str(RULES_PATH), help="市政识图规则 JSON")
     parser.add_argument("--snap-tolerance", type=float, default=5.0, help="端点吸附容差，图面单位")
+    parser.add_argument("--dia-tolerance", type=float, default=None,
+                        help="就近管径挂接距离上限，图面单位（默认 10000 或 rules.dia_tolerance）")
+    parser.add_argument("--legend-tolerance", type=float, default=35000.0,
+                        help="「图例」文字邻域半径，图面单位（范围内的圆实体判为图例符号剔除）")
+    parser.add_argument("--entity-far-tol", type=float, default=5000.0,
+                        help="圆实体距最近市政线段距离上限，图面单位（超过判为远线符号剔除）")
     args = parser.parse_args()
 
     rules = load_rules(Path(args.rules))
+    if args.dia_tolerance is not None:
+        rules["dia_tolerance"] = args.dia_tolerance
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[str] = []
@@ -481,7 +752,8 @@ def main() -> int:
         src = Path(value)
         if not src.exists():
             raise FileNotFoundError(src)
-        payload = analyze_file(src, rules, args.snap_tolerance)
+        payload = analyze_file(src, rules, args.snap_tolerance, legend_tolerance=args.legend_tolerance,
+                               entity_far_tol=args.entity_far_tol)
         payload = contractize_payload(payload, source=src.name)
         json_path = out_dir / f"{src.stem}.municipal.json"
         md_path = out_dir / f"{src.stem}.municipal.md"

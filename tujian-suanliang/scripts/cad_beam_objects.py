@@ -609,6 +609,17 @@ def beam_instances_for_label(data: dict[str, Any],
             and x0 <= float(row["x"]) <= x1
             and y0 <= float(row["y"]) <= y1
         ]
+        if not selected:
+            # cad_interpret 漏检该图名时 sheet_label 归不了属（实测 J-5 十个
+            # 真图名只认出 7 个，251/407 个梁标注 label 为空）——图框互不
+            # 重叠，按 bbox 直接选是安全的兜底。
+            selected = [
+                row for row in instances
+                if isinstance(row.get("x"), (int, float))
+                and isinstance(row.get("y"), (int, float))
+                and x0 <= float(row["x"]) <= x1
+                and y0 <= float(row["y"]) <= y1
+            ]
     return selected
 
 
@@ -1634,7 +1645,11 @@ def main() -> int:
                     help="覆盖图框范围，格式 x0,y0,x1,y1")
     ap.add_argument("--floor-label", required=True,
                     help="如：二层梁平法施工图")
-    ap.add_argument("--layer-pattern", default=r"梁-虚线|梁-实线|BEAM")
+    ap.add_argument("--layer-pattern",
+                    # 原为 "梁-虚线|梁-实线|BEAM"，只认连字符写法。实测同一批图纸
+                    # 里既有 "梁-实线" 也有 "结_梁_实线"/"梁__虚线"（下划线），
+                    # 硬编码连字符会让后者一条线都取不到、量直接为 0。
+                    default=r"梁[-_]{1,2}(?:实线|虚线)|BEAM")
     ap.add_argument("--leader-layer-pattern",
                     default=r"S-梁-配筋-集中标注",
                     help="集中标注引线图层正则")

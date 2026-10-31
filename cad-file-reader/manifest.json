@@ -1,7 +1,7 @@
 {
   "name": "cad-file-reader",
-  "version": "0.38.3",
-  "description": "本地读取 DWG/DXF/DWT/PDF 图纸：DWG/DXF 走流式解析，PDF 走本机分流+本地 OCR。提取图层、文字、块、图框、几何、17+1 类专业识图候选（含园林景观：苗木图例、乔灌地被候选、铺装闭合环、设计院校准、DWG块名净化与自动转DXF复扫）、系统拓扑、长度/面积/体积测量候选和规范图集元数据。仅输出识图与测量候选（final_quantity=false）。安装一条命令：scripts/setup.sh（轻量包）或解压后直接用（完整包）。",
+  "version": "0.39.2",
+  "description": "本地读取 DWG/DXF/DWT/PDF 图纸：DWG/DXF 走流式解析，PDF 走本机分流+本地 OCR。提取图层、文字、块、图框、几何、17+1 类专业识图候选（含园林景观：苗木图例、乔灌地被候选、铺装闭合环、设计院校准、DWG块名净化与自动转DXF复扫）、系统拓扑、长度/面积/体积测量候选和规范图集元数据。仅输出识图与测量候选（final_quantity=false）。安装一条命令：scripts/setup.sh（轻量包）或解压后直接用（完整包）。 契约流固化：DWG 只由 cad_scan/cad_contract 解析一次，算量/碰撞只消费契约JSON；sample-site结构2/3固定走 ODA 副本转DXF→--dwg-dxf-fallback 复扫（不回写原图）。",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -203,7 +203,7 @@
     "scripts/i18n.py"
   ],
   "privacy": "本机运行，图纸字节不上传；DWG/DXF 解析使用随包第三方库，详见 NOTICE.md。",
-  "boundary": "只做识图、证据、语义/拓扑/变化候选和测量候选（final_quantity=false）；不输出最终工程量、材料量、造价、结算量、规范符合性结论或设计审查结论。",
+  "boundary": "只做识图、证据、语义/拓扑/变化候选和测量候选（final_quantity=false）；不输出最终工程量、材料量、造价、结算量、规范符合性结论或设计审查结论。 契约流红线：DWG/DXF 仅由本 skill 解析一次；算量技能不得自行解图。",
   "contract_schema": "cad-file-reader/v0; qto-project/v1(联动可选)",
   "schemas": [
     "schemas/candidate-v0.schema.json",

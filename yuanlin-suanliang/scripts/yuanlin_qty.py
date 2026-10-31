@@ -1380,6 +1380,29 @@ def _dxf_block_paving_segments(path, cfg):
     return {"segments": segs, "layers": layers, "mm_per_unit": unit_mm_value, "warnings": warnings}
 
 
+def paving_area_implausible(raw_area: float, frame_m2: float,
+                            cap_m2: float = 1e8, ratio_limit: float = 3.0) -> tuple[bool, str]:
+    """铺装强算候选面积的合理性判据（真图驱动，0.4.33）。
+
+    真图教训：sample-road种植总图图层名解码失败，--paving-all-geometry 对全几何做闭环，
+    把图框线、苗木表表格线、种植符号一并闭成"假环"，算出 74 亿 m²（真实铺装应为万级）。
+    判据一（绝对上限）：没有任何单体景观/园林工程的铺装能到 cap_m2（默认 100 km²）；
+    判据二（相对图幅）：仅当图幅外接面积本身可信（<cap_m2）时才用——多图框 DWG 的
+    总 bbox 会被撑大（该图实测 375 亿 m²），此时相对判据不可用，只靠绝对上限。
+    """
+    bad_neg = raw_area < 0
+    bad_cap = raw_area > cap_m2
+    bad_ratio = frame_m2 > 0 and frame_m2 < cap_m2 and raw_area > frame_m2 * ratio_limit
+    if bad_neg:
+        return True, f"强算候选 {raw_area:,.0f} m² 为负，判定不可信"
+    if bad_cap:
+        return True, f"强算候选 {raw_area:,.0f} m² 超过可信上限 {cap_m2:,.0f} m²"
+    if bad_ratio:
+        return True, (f"强算候选 {raw_area:,.0f} m² 达图幅外接面积 {frame_m2:,.0f} m² 的 "
+                      f"{raw_area / frame_m2:,.1f} 倍（阈值 {ratio_limit:g} 倍）")
+    return False, ""
+
+
 def paving_rows(landscape, scan, cfg, scale_unit, all_geometry=False):
     rows, review = [], []
     segs_by_layer, blank_layer_segs = {}, []
@@ -1519,6 +1542,29 @@ def paving_rows(landscape, scan, cfg, scale_unit, all_geometry=False):
             main_area += area_m2
         else:
             candidate_area += area_m2
+    # 合理性护栏（真图教训：图层名解码失败时全几何闭环会算出天文数字，如 74 亿 m²）
+    implausible_note = ""
+    if forced_mode and blank_layer_segs:
+        xs = [p for s in blank_layer_segs for p in (s[0], s[2])]
+        ys = [p for s in blank_layer_segs for p in (s[1], s[3])]
+        k = mm * scale / 1000.0  # 图纸单位 → 米
+        frame_m2 = max(max(xs) - min(xs), 0.0) * max(max(ys) - min(ys), 0.0) * k * k
+        raw_area = net_candidate_area or candidate_area
+        bad, why = paving_area_implausible(
+            raw_area, frame_m2,
+            cap_m2=float(cfg.get("paving_area_plausibility_cap_m2") or 1e8),
+            ratio_limit=float(cfg.get("paving_area_plausibility_ratio") or 3.0))
+        if bad:
+            ratio = (raw_area / frame_m2) if frame_m2 > 0 else 0.0
+            implausible_note = (why + "；图层名缺失下全几何闭环会把图框、表格线、"
+                               "苗木符号一并闭成假环；本轮不出面积，只留证据（真图教训："
+                               "sample-road种植总图曾算出 74 亿 m²）")
+            review.append({"layer": "（无图层，全几何候选）",
+                           "reason": implausible_note,
+                           "evidence": f"raw_candidate_m2={raw_area:.2f}, frame_m2={frame_m2:.2f}, ratio={ratio:.1f}",
+                           "confidence": cfg["confidence"]["review"]})
+            candidate_area = 0.0
+            net_candidate_area = 0.0
     for r in review:
         rows.append({"图层": r["layer"], "面序号": "REVIEW", "区域": f"{r['layer']}|降级", "绘制单位面积": "", "实际铺装面积_m2": "",
                      "角色": "未计算", "嵌套深度": "", "置信分层": CONF_P3, "置信度": cfg["confidence"]["review"],
@@ -1527,7 +1573,9 @@ def paving_rows(landscape, scan, cfg, scale_unit, all_geometry=False):
                      "计入主线": "否", "final_quantity": False, "使用边界": BOUNDARY})
     return rows, {"layers": layers, "review": review, "solid": {l: None for l in layers},
                   "main_area_m2": round(main_area, 4), "candidate_area_m2": round(candidate_area, 4),
-                  "net_area_m2": round(net_candidate_area, 4), "forced_mode": forced_mode, "has_geometry": has_geometry}
+                  "net_area_m2": round(net_candidate_area, 4), "forced_mode": forced_mode,
+                  "area_implausible": bool(implausible_note), "area_implausible_note": implausible_note,
+                  "has_geometry": has_geometry}
 
 
 def _safe_evidence_name(v):

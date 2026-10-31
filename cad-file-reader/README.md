@@ -17,6 +17,7 @@
 - **规范/图集元数据定位**、图层/块语义、图纸变化对比、PDF 识图（本机类型分流 + 本地 OCR）。
 - **大图低内存扫描**、证据缓存、局部解析；Markdown / JSON / CSV / Excel / Word 输出。
 - **统一候选契约** `cad-file-reader/v0`：证据坐标、置信度分层（confirmed/inferred/review）、复核原因。
+- **契约流固化（红线）**：DWG/DXF 只由本技能 `cad_scan`/`cad_contract` 解析一次生成契约；算量/碰撞技能只消费契约 JSON，不各自重复解图。`CODEX_DIRECT`/`CAD_ALLOW_DIRECT` 默认不设；仅回归/调试可显式开启。
 
 ## 安装（三平台一条命令）
 
@@ -170,6 +171,33 @@ bash scripts/doctor.sh --md-only         # 人类可读 Markdown 打到 stdout
 - 档 0：当前机器可用/缺失能力分档。
 - 档 1：每项缺失的最小修复命令（优先本技能自带 `scripts/setup.sh`、`install_vendor.sh`、`ensure_runtime.sh`）。
 - 档 2：DWG 缺少 LibreDWG(dwg2dxf)/ODAFileConverter 转换后端时的下一步（可用 `cad_scan.sh --dwg-dxf-fallback` 先试）。
+
+## 契约流固化与结构 2/3 ODA 兜底（2026-10-31 实测）
+
+**契约流红线**：DWG/DXF 只由本技能（`cad_scan`/`cad_contract`）解析**一次**形成 `cad-file-reader/v0` 契约；土建/安装/装饰/园林算量、跨专业碰撞检查默认只消费契约 JSON，不重复自行解图。`CODEX_DIRECT` 与 `CAD_ALLOW_DIRECT` 默认不设；算量入口仅回归/调试可用显式逃生口。
+
+**sample-site结构 2#/3#（图审版）固定路径**：这两张图纸属 ezdwg/libredwg 都无法直接解码的特殊变体，固定走 **ODA 副本转 DXF → `cad_scan --dwg-dxf-fallback` 复扫**（本机非默认路径，仅这类特殊图才需要）：
+
+```bash
+# ① 只复制副本，禁止覆盖/修改原图
+cp "/sample-drive/备份/sample-site/图纸/图/结构(2)/结构/sample-struct-A.dwg"  work/oda-src/
+cp "/sample-drive/备份/sample-site/图纸/图/结构(2)/结构/sample-struct-B.dwg"  work/oda-src/
+
+# ② ODA 只允许在副本目录上转换（命令格式同 scripts/read_cad.py 内 _convert_with_oda）
+"/Applications/ODAFileConverter.app/Contents/MacOS/ODAFileConverter" <输入目录> <输出目录> "ACAD2018" "DXF" "0" "1" "<文件.dwg>"
+
+# ③ 对转换出的副本 DXF 做回读复扫（副本 DXF ≠ 图纸原件证据）
+python3 scripts/run_cad.py cad_scan work/oda-out/<名>.dxf \
+    --dwg-dxf-fallback --with-geom \
+    --format json -o work/oda-out/<名> \
+    --detail-json work/oda-out/<名>_detail.json
+```
+
+- 实测回放（2026-10-31）：结构 2# = 文字 12054 / 图层 356 / geometry_segments 37831 / 图框 22；结构 3# = 文字 13407 / 图层 351 / geometry_segments 42002 / 图框 24。
+- 副本安全校验：`work/oda-src/sample-struct-A.dwg`、`sample-struct-B.dwg` 与原卷 sha256 一致（未改原图）；DXF 属副本转换产物，不能作为原图字节证据。
+- `final_quantity=false` 顶层不破：以上仍为识图/测量候选，不输出最终工程量、造价或结算结论。
+- 回放产物（scan/detail JSON）与验收记录另存于本项目线程 `work/oda-out/` 与 `outputs/`。
+
 
 ## 统一自测/回归闭环（scripts/self_test.sh）
 

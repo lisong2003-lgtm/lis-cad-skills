@@ -208,6 +208,7 @@ DECODERS = {
     "blocks": "decode_block_header_names",
     "line": "decode_line_entities",
     "lwpoly": "decode_lwpolyline_entities",
+    "circle": "decode_circle_entities",
     "placements": "decode_entity_placements",
 }
 GEOM_KINDS = ("line", "lwpoly")
@@ -232,16 +233,30 @@ def _worker(name: str, path: str) -> int:
     fn = getattr(raw, DECODERS[name])
     rows = fn(path) or []
     layer_by_handle: dict[int, str] = {}
+    layer_names: dict[int, str] = {}
+    layer_names_ok = False
+    try:
+        layer_names = dict(raw.decode_layer_names(path) or [])
+        layer_names_ok = any(str(v).strip() for v in layer_names.values())
+    except Exception:
+        layer_names = {}
+        layer_names_ok = False
     if name not in ("layers", "blocks") and rows:
         try:
-            layer_names = dict(raw.decode_layer_names(path) or [])
             handles = [r[0] for r in rows if isinstance(r[0], int)]
             if handles:
                 ent_layers = raw.decode_object_entity_layer_handles(path, handles) or []
-                layer_by_handle = {
-                    ent_handle: layer_names.get(layer_handle, "")
-                    for ent_handle, layer_handle in ent_layers
-                }
+                # 图层名解不出来时（实测 AC1021 某些文件 decode_layer_names 返回整表空串，
+                # 但句柄完全可解），退到「句柄即图层身份」：同一图层的实体仍能归到一组，
+                # 只是语义名不可得。用 #xxxx 前缀明确标注这不是真实图层名，绝不伪造名字。
+                for ent_handle, layer_handle in ent_layers:
+                    name_text = str(layer_names.get(layer_handle, "") or "").strip()
+                    layer_by_handle[ent_handle] = name_text if name_text else handle_layer_label(layer_handle)
+        except Exception:
+            pass
+    if name not in ("layers", "blocks") and rows and not layer_names_ok:
+        try:
+            sys.stdout.write(json.dumps({"__note__": "图层名解码失败（图层表可读但名称为空），已用句柄标识图层（#xxxx）；语义图层名不可得，分类请依赖文字/几何"}) + "\n")
         except Exception:
             pass
     if name == "placements":
@@ -266,7 +281,10 @@ def _worker(name: str, path: str) -> int:
             out[1] = row[1]
             out[3] = layer_name
         if name in ("layers", "blocks"):
-            out = [row[0], str(row[1] or ""), None, None]
+            label = str(row[1] or "")
+            if name == "layers" and not label.strip() and isinstance(row[0], int):
+                label = handle_layer_label(row[0])  # 与实体侧同一套标识，保证两处能对上
+            out = [row[0], label, None, None]
         if name == "insert":
             out = [row[0], str(row[-1] or ""), [row[1] if isinstance(row[1], (int, float)) else None,
                                                   row[2] if isinstance(row[2], (int, float)) else None], layer_name]
@@ -279,12 +297,43 @@ def _worker(name: str, path: str) -> int:
                 if isinstance(pt, (tuple, list)) and len(pt) >= 2:
                     flat += [pt[0], pt[1]]
             out = [row[0], None, flat, layer_name]
+        if name == "circle" and len(row) >= 5:
+            # 行格式 (handle, x, y, z, r)；把半径放进坐标槽第 3 位，主流程按圆消费。
+            out = [row[0], None, [row[1], row[2], row[4]], layer_name]
         try:
             sys.stdout.write(json.dumps([safe(x) for x in out], ensure_ascii=True, default=float) + "\n")
         except Exception:
             continue
     sys.stdout.flush()
     return 0
+
+
+def handle_layer_label(handle) -> str:
+    """图层名解不出来时用句柄当图层身份。`#` 前缀明确标注这不是真实图层名，绝不伪造名字。"""
+    try:
+        return f"#{int(handle):04X}"
+    except Exception:
+        return "#UNKNOWN"
+
+
+def parse_worker_lines(text: str) -> tuple[list, list[str]]:
+    """解析 worker 的 stdout：数据行成 list，{"__note__": ...} 转成 notes，坏行跳过。"""
+    rows: list = []
+    notes: list[str] = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue  # 个别乱码行跳过，不影响整体
+        if isinstance(obj, dict):
+            if obj.get("__note__"):
+                notes.append(str(obj["__note__"]))
+            continue
+        rows.append(obj)
+    return rows, notes
 
 
 def _rows(name: str, path: str, budget: float, notes: list):
@@ -303,15 +352,8 @@ def _rows(name: str, path: str, budget: float, notes: list):
         err = (cp.stderr or "").strip().splitlines()
         notes.append(f"{name} 解码失败：{err[-1][:120] if err else cp.returncode}")
         return None
-    rows = []
-    for line in cp.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except Exception:
-            continue  # 个别乱码行跳过，不影响整体
+    rows, worker_notes = parse_worker_lines(cp.stdout)
+    notes.extend(worker_notes)
     return rows
 
 
@@ -765,6 +807,104 @@ def geometry_segments(path, budget, log, include_layers=False, roi=None, max_row
     return (segs, seg_layers, notes) if include_layers else (segs, notes)
 
 
+def circle_entities(path, budget, log, roi=None, min_radius=1.0, max_rows=None):
+    """解 CIRCLE 成实体表 [x, y, r, layer]（市政井圈/池边等实体几何）。
+
+    r < min_radius 的图元（图例符号、原点杂点）不进实体表；roi 为 AABB 时按
+    圆心过滤。max_rows 上限防刷屏，超限记 note。这是块实体提取能力的第一步：
+    匿名块（INSERT）名字多为解码乱码，语义不可得，本轮只提取圆，诚实记录边界。
+    """
+    notes: list[str] = []
+    ents: list[list] = []
+    rows = _rows("circle", path, budget, notes) or []
+    for r in rows:
+        c = r[2] if len(r) > 2 else None
+        if not c or len(c) < 3:
+            continue
+        x, y, rad = c[0], c[1], c[2]
+        if not isinstance(rad, (int, float)) or not math.isfinite(rad) or rad < min_radius:
+            continue
+        if not sane(x, y) or not _rc_in_roi(x, y, roi):
+            continue
+        ents.append([float(x), float(y), float(rad), str(r[3] or "") if len(r) > 3 else ""])
+        if max_rows and len(ents) >= max_rows:
+            notes.append(f"圆实体达上限 {max_rows}，已截断")
+            break
+    notes.append(f"圆实体 {len(ents)} 个（半径≥{min_radius:g}）")
+    log(f"圆实体 {len(ents)} 个")
+    return ents, notes
+
+
+def dxf_geometry_stream(path, include_layers=False, roi=None, max_rows=None):
+    """流式按 group code 扫 DXF 抓 LINE / LWPOLYLINE（ezdxf 读不了时的兜底）。
+
+    为什么需要：LibreDWG 转出的 DXF 常缺 EOF tag、实体 handle 重复、图层名空，
+    ezdxf.readfile 抛 DXFStructureError，连 recover.readfile 都救不了
+    （实测 J-2#/J-3#4#6#7# 两张结构图因此几何全空，跨专业轴网核对做不了）。
+    但这些文件里的 LINE 数据本身是完整的——按 0 组码切实体逐段读就能取到。
+    """
+    notes = []
+    segs = []
+    seg_layers = [] if include_layers else None
+    kind = None
+    buf = {}
+    lw_pts: list[tuple[float, float]] = []
+
+    def emit(seg):
+        if not sane(*seg) or not _seg_in_roi(seg[0], seg[1], seg[2], seg[3], roi):
+            return
+        segs.append(seg)
+        if include_layers:
+            seg_layers.append(str(buf.get("8") or ""))
+
+    def flush():
+        nonlocal buf, lw_pts
+        if kind == "LINE":
+            x1, y1 = _num(buf.get("10")), _num(buf.get("20"))
+            x2, y2 = _num(buf.get("11")), _num(buf.get("21"))
+            if None not in (x1, y1, x2, y2):
+                emit((float(x1), float(y1), float(x2), float(y2)))
+        elif kind == "LWPOLYLINE" and len(lw_pts) >= 2:
+            for a, b in zip(lw_pts, lw_pts[1:]):
+                emit((a[0], a[1], b[0], b[1]))
+        buf = {}
+        lw_pts = []
+
+    stop = False
+    try:
+        with open(path, "r", errors="ignore", encoding="utf-8", newline=None) as fh:
+            it = iter(fh)
+            for a, b in zip(it, it):
+                if stop:
+                    break
+                code = a.strip()
+                val = b.rstrip("\r\n")
+                if code == "0":
+                    flush()
+                    kind = val.strip()
+                    continue
+                if kind == "LINE":
+                    if code in ("10", "20", "11", "21", "8"):
+                        buf[code] = val.strip()
+                elif kind == "LWPOLYLINE":
+                    if code == "10":
+                        lw_pts.append([_num(val), None])
+                    elif code == "20" and lw_pts and lw_pts[-1][1] is None:
+                        lw_pts[-1][1] = _num(val)
+                    elif code == "8":
+                        buf[code] = val.strip()
+                    if len(lw_pts) >= 4096:
+                        lw_pts = [(p[0], p[1]) for p in lw_pts if p[1] is not None]
+                if max_rows and len(segs) >= max_rows:
+                    notes.append(f"几何线段达上限 {max_rows}，已截断（流式兜底扫描）")
+                    stop = True
+            flush()
+    except Exception as exc:
+        notes.append(f"流式 DXF 几何扫描失败：{type(exc).__name__} {exc}")
+    notes.append(f"已改用流式 DXF 扫描（ezdxf 拒绝该文件）：线段 {len(segs)} 条")
+    return (segs, seg_layers, notes) if include_layers else (segs, notes)
+
+
 def dxf_geometry_segments(path, budget, log, include_layers=False, roi=None, max_rows=None):
     """用 ezdxf 从 DXF 模型空间取 LINE/LWPOLYLINE 线段。
 
@@ -816,6 +956,14 @@ def dxf_geometry_segments(path, budget, log, include_layers=False, roi=None, max
                     continue
     except Exception as exc:
         notes.append(f"DXF 几何解码失败：{exc}")
+        # ezdxf 严格模式读不了（缺 EOF / 重复 handle / 图层名空）时走流式兜底，
+        # 否则这类图的几何全空，下游轴网核对会误判成「图上没有轴网」。
+        s2, l2, n2 = dxf_geometry_stream(path, include_layers=include_layers,
+                                         roi=roi, max_rows=max_rows)
+        if s2:
+            segs, notes = s2, notes + n2
+            if include_layers:
+                seg_layers = l2
     return (segs, seg_layers, notes) if include_layers else (segs, notes)
 
 
@@ -1687,6 +1835,7 @@ def main():
     fstats: list[dict] = []
     notes: list[str] = []
     seg_files: list[list] = []
+    gents_all: list = []
     seg_layers_files: list[list] = []
     sheet_base = 0
     partial = roi is not None or sheet is not None
@@ -1735,6 +1884,7 @@ def main():
         fallback_dxf: Path | None = None
         local_sheets: list[dict] = []
         gsegs: list = []
+        gents: list = []
         glayers: list[str] | None = [] if args.with_geom_layer else None
         if cached is not None:
             recs, layers, meta = cached["recs"], cached["layers"], cached["meta"]
@@ -1742,6 +1892,16 @@ def main():
             file_sheet_count = int(cached.get("sheet_count") or len(local_sheets))
             gsegs = list(cached.get("segs") or []) if args.with_geom else []
             glayers = list(cached.get("seg_layers") or []) if args.with_geom_layer else None
+            if args.with_geom and fmt == "DWG":
+                # 圆实体不入 sqlite 缓存（表结构保持稳定），缓存命中时现解一遍；
+                # 解码有预算护栏，代价小。
+                gb = args.geom_budget if args.geom_budget and args.geom_budget > 0 else args.budget
+                gm = args.geom_max_rows if args.geom_max_rows and args.geom_max_rows > 0 else None
+                try:
+                    gents, en = circle_entities(str(f), gb, log, max_rows=gm)
+                    notes += [f"{f.name}: {x}" for x in en]
+                except Exception as e:
+                    notes.append(f"{f.name}: 圆实体提取失败 {type(e).__name__} {e}")
             notes.append(f"{f.name}: 缓存命中（{'局部' if cached.get('partial') else '全量'}）")
             for x in cached.get("notes") or []:
                 notes.append(f"{f.name}: {x}")
@@ -1853,6 +2013,13 @@ def main():
                 glayers = glayers if args.with_geom_layer else None
                 file_notes.extend(gn)
                 notes += [f"{f.name}: {x}" for x in gn]
+                if fmt == "DWG":
+                    try:
+                        gents, en = circle_entities(str(f), gb, log, max_rows=gm)
+                        file_notes.extend(en)
+                        notes += [f"{f.name}: {x}" for x in en]
+                    except Exception as e:
+                        notes.append(f"{f.name}: 圆实体提取失败 {type(e).__name__} {e}")
 
             if cache_dir is not None:
                 cache_meta = dict(meta)
@@ -1892,6 +2059,7 @@ def main():
             recs = records_in_roi(recs, roi)
             gsegs, glayers = segments_in_roi(
                 gsegs, roi, glayers if args.with_geom_layer else None)
+            gents = [e for e in gents if _rc_in_roi(e[0], e[1], roi)]
         elif sheet is not None:
             file_sheets = [s for s in file_sheets if int(s.get("id") or 0) == sheet]
             recs = [r for r in recs if sheet_id(r) == sheet]
@@ -1899,8 +2067,10 @@ def main():
             if bbox is not None:
                 gsegs, glayers = segments_in_roi(
                     gsegs, bbox, glayers if args.with_geom_layer else None)
+                gents = [e for e in gents if _rc_in_roi(e[0], e[1], bbox)]
             else:
                 gsegs, glayers = [], [] if args.with_geom_layer else None
+                gents = []
 
         if partial:
             layers = sorted({str(r.get("layer") or "") for r in recs} - {""})
@@ -1939,7 +2109,9 @@ def main():
         fstats.append(st)
         if args.with_geom:
             st["segs"] = len(gsegs)
+            st["ents"] = len(gents)
             seg_files.append(gsegs)
+            gents_all.extend([list(e) + [len(fstats)] for e in gents])
             if args.with_geom_layer:
                 seg_layers_files.append(glayers or [])
         log(f"完成 {round(time.time()-t0,1)}s / 峰值内存 {rss_mb()}MB")
@@ -2086,15 +2258,31 @@ def main():
         print("\n[提示] " + "；".join(notes), file=sys.stderr)
     if args.detail_json:
         detail = jsonable(res)
+        # 产物必须能说出自己来自哪张图。只靠产物文件名不够：下游（图纸聚类、
+        # 跨专业配对）拿到的路径是输出目录，会把整套多专业图纸挤进同一个簇，
+        # 专业判定再准也没用。这里记源图绝对路径。
+        detail["source_paths"] = [str(Path(p).resolve()) for p in (args.paths or [])]
         detail["text_records"] = all_recs
         detail["hits"] = res.get("hits") or []
         detail["geometry_segments"] = seg_files if args.with_geom else []
         detail["geometry_layers"] = seg_layers_files if args.with_geom_layer else []
+        detail["geometry_entities"] = gents_all if args.with_geom else []
         detail_path = Path(args.detail_json)
         detail_path.parent.mkdir(parents=True, exist_ok=True)
         detail_path.write_text(
             json.dumps(detail, ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"已写出详情 {detail_path}", file=sys.stderr)
+
+    # 零产出不是成功。任何 DWG/DXF 的图层表至少有一个 "0" 图层，图层表为空、
+    # 文字也为空，只能说明这张图没读出来，不是一张空图。返回 0 会让上游把它
+    # 当成「图纸没内容」，而实际是「解析失败」——两者后续处理完全不同，
+    # 静默成功会把能力边界藏起来（实测 5 张 AC1018/AC1027 大图即如此）。
+    if not (res.get("layers") or []) and not all_recs:
+        print("[错误] 解析结果为空：图层表 0 条、文字 0 条。"
+              "这不是空图，是没读出来。常见原因：section map 变体（page info truncated）；"
+              "可先用其它工具确认文件本身完整，再考虑降级到 DXF 路径。",
+              file=sys.stderr)
+        return 2
     return 0
 
 

@@ -13,3 +13,15 @@ __pycache__/
 !.env.example
 alipay_private_key*.txt
 app_private_key*.pem
+
+# 归档区（含重建过的损坏依赖备份，不该入 git）
+.archive/
+
+# 平台发布白名单：真实回归证据、开发期单测、聚合入口不入库
+scripts/tests/
+**/scripts/tests/
+cad-self-test-report*
+**/cad-self-test-report*
+state-v2.json
+**/state-v2.json
+cad-suite/
