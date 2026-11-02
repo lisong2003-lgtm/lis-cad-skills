@@ -1,6 +1,6 @@
 {
   "name": "tujian-suanliang",
-  "version": "0.9.37",
+  "version": "0.9.38",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -86,10 +86,30 @@
     "scripts/setup.sh",
     "scripts/smoke_utf8_json.py",
     "scripts/steel_tonnage.py",
-    "scripts/steel_tonnage.sh"
+    "scripts/steel_tonnage.sh",
+    "scripts/tests/test_cad_beam_attribution_conflict.py",
+    "scripts/tests/test_cad_beam_candidate_attribution.py",
+    "scripts/tests/test_cad_beam_centerline_support.py",
+    "scripts/tests/test_cad_beam_frame_label_index.py",
+    "scripts/tests/test_cad_beam_instance_dedup.py",
+    "scripts/tests/test_cad_beam_multispan_closure.py",
+    "scripts/tests/test_cad_beam_span_closure.py",
+    "scripts/tests/test_cad_civil_defense_checklist.py",
+    "scripts/tests/test_cad_common.py",
+    "scripts/tests/test_cad_concrete_grade_ledger.py",
+    "scripts/tests/test_cad_concrete_grade_source.py",
+    "scripts/tests/test_cad_deduction_ledger.py",
+    "scripts/tests/test_cad_glb_indicator_scope.py",
+    "scripts/tests/test_cad_prefab_instance_expansion.py",
+    "scripts/tests/test_cad_quantity_pipeline.py",
+    "scripts/tests/test_cad_quantity_regression.py",
+    "scripts/tests/test_cad_review_checklist.py",
+    "scripts/tests/test_cad_slab_thickness_partition.py",
+    "scripts/tests/test_cad_structure_model.py",
+    "scripts/tests/test_cad_wall_edge_closeout.py",
+    "scripts/tests/test_qty_core.py"
   ],
   "references": [
-    ".gitignore",
     "CHANGELOG.md",
     "LESSONS.md",
     "LICENSE.md",
@@ -104,7 +124,9 @@
     "rules/口径.json"
   ],
   "tests": [
-    "scripts/self_test.py"
+    "scripts/self_test.py",
+    "scripts/tests/test_cad_member_audit.py",
+    "scripts/tests/test_steel_tonnage.py"
   ],
   "privacy": "全程本机运行，图纸字节不出本机；缓存 .cadidx/ 落在图纸目录或临时目录，可用 --cache-dir 指定或删除。迁移脚本只处理本机识图结果，不上传图纸或工程量。",
   "notes": "输出含工程量的表格由使用者自行保管；本技能不含任何项目实测数据。",

@@ -1,4 +1,4 @@
-# lis-skill-bus v0.1.6
+# lis-skill-bus v0.1.7
 
 本地 Skill 联动总线：**Skill 管专业算法，bus 管项目状态与契约**。
 纯 Python stdlib、不联网、跨平台；CLI 与 MCP 双模式，下载即用、可降级。

@@ -1,17 +1,17 @@
 ---
 name: tujian-suanliang
 slug: tujian-suanliang
-displayName: 土建算量 · 混凝土与钢筋计划口径速算
-version: 0.9.37
+displayName: Structural Concrete & Rebar Review Ledger
+version: 0.9.38
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
-description: 从任意结构施工图（DWG/DXF）快速出混凝土方量与钢筋估算带，含常规尺寸/标号规范校核提示与规范/图集元数据辅助，按楼层/浇筑区（含后浇带先浇区与封闭带分账）报物资计划。已接管 cad-file-reader 原梁板柱墙、楼梯、洞口、预制底板、结构模型和混凝土分账流水线；给图名即出该层梁板柱墙的净量、订货量（含损耗）、标号分档与钢筋吨数带；一次解图后建索引，之后同一张图的任何查询不再解图。口径为计划口径毛量（±5~10%），不替代翻样、下料、对量与结算。
+description: Produces concrete volume and rebar estimate bands from structural drawings with evidence, confidence and review flags. Reports by floor or pour zone for material-planning review, not final settlement, shop fabrication or legal sign-off.
 i18n:
   en: README.en.md
   zh: README.md
-locale: zh-CN
-locales: [zh-CN, en-US]
+locale: en-US
+locales: [en-US, zh-CN]
 ---
 
 # 土建算量
@@ -22,7 +22,7 @@ locales: [zh-CN, en-US]
 - 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
 - `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
 
-- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
+- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
 
 
 > **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
@@ -159,7 +159,7 @@ scripts/run_qty.sh advanced 结构图.dwg \
 - 钢筋吨位汇总（0.9.31，`scripts/rebar_tonnage.py`）：两个口径交叉核对——口径A＝混凝土净量×含筋率区间；口径B＝cad-file-reader 聚合 JSON 的图面配筋构成（直径×米重 0.00617·d² → 加权平均直径 → A 带内位置，收窄成建议区间）；**推荐区间取两带交集**，交集为空时说明偏差方向、不硬凑数。输出标「估算带（±20~30%），final_quantity=false」
 - 0.9.32：新增 `--quantity-report` 入口——直接吃 s5 `cad_quantity_pipeline.py` 的 `quantity_report.json`（与 `--plan` 二选一）。防重复计数：component_schedule 某类别有体积行就只算它；该类别无体积（真图实况是多为 index-only）时梁走 beam_schedule 模型行、板走 slab_schedule；column_schedule 是柱子集永不重复计入。规则里缺含筋率且贡献为 0 的类别会显式报警（quantity_report 路径没有自带带可退）。
 - 0.9.33：`--floor` 单层口径B——按楼层名过滤 aggregate 的 `rebar_by_floor` 行算加权直径（宽松匹配，找不到回退全图并在输出标注）；构件级校对 `scripts/cad_member_audit.py`——L1 图面标注（beam_objects 目标图框，未给则退 component_schedule 全文件索引并在输出提示口径差异）× L2 模型几何（beam_schedule）按编号互对，五态（一致/截面冲突/规格残缺/图面有模型无/模型有图面无）+ 体积守恒线，self_check=true。真图（J-5 -0.100 层）：beam_objects 口径 21 对编号全对齐（全文件口径的 55 个"图面有模型无"是其他图框标注混入的假缺口）。
-- 0.9.37（真图·sample-tujian 10 张）：**楼层切分三处修复**——①`find_titles` 变量遮蔽 bug（图名到构件的距离取成残留 y），地库梁图这类"图名标在图面上方"的图一个真图名都认不出，半径改按图名逐条 30/60/120/160 m 分档；②图名证据从"只认柱梁板墙编号"扩到 编号∪基础编号(JCL/CT)∪截面∪配筋（含 `%%13` 转义），基础图/板带图不再因 members≈0 判死；③图签噪声（"绘    图"、设计单位/图号栏目名、带逗号的说明句）剔除。真图名 262 → 555 个，10 张图张张出图名。**取数范围**：去掉"图框 >200 m 就不可信"的一刀切（C 区车库顶板梁 260 m×250 m 是真图幅），改按"是否装下全图 ≥60% 文字 / 是否比其它图框中位跨度大 4 倍"判断，同图纳入文字 19 → 5003 条；新增 `--window-radius-mm` 人工定取数半径；纳入文字不足全图 10% 时报告头提示"取数范围偏小"。
+- 0.9.37（真图·华山-土建 10 张）：**楼层切分三处修复**——①`find_titles` 变量遮蔽 bug（图名到构件的距离取成残留 y），地库梁图这类"图名标在图面上方"的图一个真图名都认不出，半径改按图名逐条 30/60/120/160 m 分档；②图名证据从"只认柱梁板墙编号"扩到 编号∪基础编号(JCL/CT)∪截面∪配筋（含 `%%13` 转义），基础图/板带图不再因 members≈0 判死；③图签噪声（"绘    图"、设计单位/图号栏目名、带逗号的说明句）剔除。真图名 262 → 555 个，10 张图张张出图名。**取数范围**：去掉"图框 >200 m 就不可信"的一刀切（C 区车库顶板梁 260 m×250 m 是真图幅），改按"是否装下全图 ≥60% 文字 / 是否比其它图框中位跨度大 4 倍"判断，同图纳入文字 19 → 5003 条；新增 `--window-radius-mm` 人工定取数半径；纳入文字不足全图 10% 时报告头提示"取数范围偏小"。
 - 后浇带：带面积＝带长×带宽，按本层各板厚档面积占比分摊 → 封闭带一笔（标号按说明"高一级"，父级推定则仍标推定），先浇区同额扣减，**总量守恒**
 - 洞口：图面能算出尺寸的（如 `JD5 720x300`）自动从板面积里扣，≥0.3㎡ 才扣；结构图常只画不注尺寸，那部分要照建施给 `--openings-m2`，扣减量与来源都写进输出
 - 同一个编号在图上有多种截面/厚度标注时：取出现次数最多的那个，全部候选写进"依据"并在顶上提示"需核对"，不静默选一个
@@ -209,7 +209,7 @@ scripts/run_qty.sh advanced 结构图.dwg \
 
 - 所有 `scripts/*.sh` 入口都 `source scripts/runtime_env.sh`，由它统一解析三件事：
   1. **解释器**：`CAD_SKILL_PYTHON` / `CODEX_PYTHON` → Codex 运行时 → PATH 上的 `python3.12/3.11` → `python3`（要求 ≥3.10）；
-  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `~/.workbuddy/skills/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
+  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `<workbuddy-skills-root>/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
   3. **依赖路径**：把「本技能 scripts + 底座 scripts + 底座 vendor」拼进 `PYTHONPATH`，`ezdxf / ezdwg / openpyxl` 等**无需全局 pip 安装**。
 - 推荐用对应的 `bash scripts/<入口>.sh`；直接 `python3 <入口>.py` 只在全局已装齐依赖时可用。
 - 依赖缺失时按 `requirements.txt` 安装：`python3 -m pip install -r requirements.txt`。

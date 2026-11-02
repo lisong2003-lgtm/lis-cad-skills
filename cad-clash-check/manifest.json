@@ -1,6 +1,6 @@
 {
   "name": "cad-clash-check",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -15,7 +15,9 @@
     "scripts/clash_building_extract.py",
     "scripts/state-v2.json"
   ],
-  "tests": [],
+  "tests": [
+    "scripts/tests/test_clash_check.py"
+  ],
   "redlines": [
     "2D 图面候选提示，非 BIM 碰撞检测；碰撞位置须人工复核",
     "final_quantity=false：不输出工程量",

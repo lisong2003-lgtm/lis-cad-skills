@@ -1,15 +1,15 @@
 ---
 name: yuanlin-suanliang
 slug: yuanlin-suanliang
-displayName: 园林算量 · 苗木统计与铺装面积
-version: 0.4.33
+displayName: Landscape Plants & Pavement Review Ledger
+version: 0.4.34
 platforms: [macos, windows, linux]
-locale: zh-CN
-locales: [zh-CN, en-US]
-localeScope: 面向中国建筑工程与园林景观图纸；规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表按中文/本地场景设计，其他语言可通过 --plant-library 传入项目词库扩展。
+locale: en-US
+locales: [en-US, zh-CN]
+localeScope: 面向建筑工程与园林景观图纸；规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表按中文/本地场景设计，其他语言可通过 --plant-library 传入项目词库扩展。
 author: lis
 license: CC-BY-NC-SA-4.0
-description: 基于 cad-file-reader 园林识图候选，按中英文图例分类统计苗木、解析苗木表设计基线、按闭合区域计算铺装面积，可选展开 DXF 块内铺装，输出带使用边界、置信分层（P0–P3）和证据坐标的园林概算底稿与物资计划草稿；不替代设计复核、放线、点树、竣工计量、对量、结算与正式报价。
+description: Classifies plant legends, parses plant-table baselines and computes pavement area from closed regions using cad-file-reader landscape candidates. Outputs review-ready landscape budget and material-plan drafts with P0-P3 confidence tiers and evidence coordinates.
 i18n:
   en: README.en.md
   zh: README.md
@@ -22,14 +22,14 @@ i18n:
 - **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
 - 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
 - `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
-- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
+- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
 
 
 > **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
 
 ## 语言与区域范围
 
-本技能面向**中国建筑工程与园林景观图纸**：规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表（如西北温带荒漠区植物等）明确按中文/本地场景设计。如需其他语言/区域，可通过 `--plant-library` 传入项目词库扩展，不改算法与口径。
+本技能面向**建筑工程与园林景观图纸**：规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表（如西北温带荒漠区植物等）明确按中文/本地场景设计。如需其他语言/区域，可通过 `--plant-library` 传入项目词库扩展，不改算法与口径。
 
 **它解决的一件事**：把 `cad-file-reader` 的园林识图候选复算成可复核的苗木统计与铺装面积概算底稿，并明确区分“苗木表设计给定数量”“有坐标的块级实例计数”“无坐标块实例计数”“块引用总数候选”“图例文字标记次数”“铺装强算候选”等口径。
 
@@ -191,7 +191,7 @@ bash scripts/yuanlin_qty.sh \
 
 ## 真图回归结论（2026-10-14）
 
-- 公司转换版：sample-road安置区景观施工图 `_t3` 边界。
+- 公司转换版：经十一路安置区景观施工图 `_t3` 边界。
   - `02种植总图+苗木表_t3.dwg`：苗木表 54 条、株数基线 1792；图例/种植文字 P2 15 类/115 次；因图层空、块名空，平面逐株计数不可用。
   - `04铺装详图一_t3.dwg`：默认不硬出面积；强算 403 条 P3 候选、合计 235976.5657 m²，不计主线。v0.2.0 的 561 条/85374.0195 m² 差异来自伪环过滤与“候选环面积合计”口径修正，不是同一口径直接比较。
   - `01总图部分_t3.dwg`、`绿化样本图.dwg`、`绿化设计说明.dwg`：主线 0，降级正确。
@@ -236,7 +236,7 @@ bash scripts/yuanlin_qty.sh \
 
 - 所有 `scripts/*.sh` 入口都 `source scripts/runtime_env.sh`，由它统一解析三件事：
   1. **解释器**：`CAD_SKILL_PYTHON` / `CODEX_PYTHON` → Codex 运行时 → PATH 上的 `python3.12/3.11` → `python3`（要求 ≥3.10）；
-  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `~/.workbuddy/skills/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
+  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `<workbuddy-skills-root>/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
   3. **依赖路径**：把「本技能 scripts + 底座 scripts + 底座 vendor」拼进 `PYTHONPATH`，`ezdxf / ezdwg / openpyxl` 等**无需全局 pip 安装**。
 - 推荐用对应的 `bash scripts/<入口>.sh`；直接 `python3 <入口>.py` 只在全局已装齐依赖时可用。
 - 依赖缺失时按 `requirements.txt` 安装：`python3 -m pip install -r requirements.txt`。

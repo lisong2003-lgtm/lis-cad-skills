@@ -1,17 +1,17 @@
 ---
 name: zhuangshi-suanliang
 slug: zhuangshi-suanliang
-displayName: 装饰算量 · 概算与物资计划
-version: 0.9.29
+displayName: Interior Decoration Data Extraction & Review Ledger
+version: 0.9.30
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
-description: 根据房间类型、建筑说明、建筑图、结构图、房间装修表、做法表和节点详图，快速出装饰概算和物资计划；可导入 cad-file-reader 的长度/面积测量候选作为待核对输入，做法映射、洞口扣减、损耗、材料台账和清单量仍由本技能计算。
+description: Turns room schedules, finishes, construction methods and node details into review-ready decoration budget candidates and material plans. Imports cad-file-reader measurement candidates as review input and keeps method mapping, opening deductions, loss and material ledger as review data, not final quantities.
 i18n:
   en: README.en.md
   zh: README.md
-locale: zh-CN
-locales: [zh-CN, en-US]
+locale: en-US
+locales: [en-US, zh-CN]
 ---
 
 # 装饰算量 v0.9.24
@@ -21,7 +21,7 @@ locales: [zh-CN, en-US]
 - **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
 - 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
 - `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
-- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
+- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
 
 
 > **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
@@ -212,7 +212,7 @@ scripts/cad_measure_to_input.py --measurements 测量候选/cad-measurement-cand
 
 - 所有 `scripts/*.sh` 入口都 `source scripts/runtime_env.sh`，由它统一解析三件事：
   1. **解释器**：`CAD_SKILL_PYTHON` / `CODEX_PYTHON` → Codex 运行时 → PATH 上的 `python3.12/3.11` → `python3`（要求 ≥3.10）；
-  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `~/.workbuddy/skills/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
+  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `<workbuddy-skills-root>/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
   3. **依赖路径**：把「本技能 scripts + 底座 scripts + 底座 vendor」拼进 `PYTHONPATH`，`ezdxf / ezdwg / openpyxl` 等**无需全局 pip 安装**。
 - 推荐用对应的 `bash scripts/<入口>.sh`；直接 `python3 <入口>.py` 只在全局已装齐依赖时可用。
 - 依赖缺失时按 `requirements.txt` 安装：`python3 -m pip install -r requirements.txt`。

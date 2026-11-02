@@ -101,12 +101,12 @@ NON_ROUTE_RE = re.compile(
     r"^(?:DIM|DIMENSION)|标注|尺寸|图框|标题|会签|PUB[_-]?TITLE|^WALL$|墙体|^STAIR|楼梯"
     r"|^AXIS|轴网|^DOTE$|^TEXT|文字|^HATCH|填充|图例|^EQUIP[_-]|设备图"
     # 块展开后图层名带 `外层块$0$` 前缀，`^DIM` 锚不上；尺寸/引出/标高线不是管线，
-    # 实测sample-site图里 DIM_LEAD/DIM_MODI/DIM_ELEV 占掉近万段，必须无锚点再挡一道。
+    # 实测医科大图里 DIM_LEAD/DIM_MODI/DIM_ELEV 占掉近万段，必须无锚点再挡一道。
     r"|DIM[_-]",
     re.I,
 )
 # 图签/标题栏属性不是设备：图号、子项名称、设计单位、绘图人、比例、专业类别……
-# 实测sample-site图里 devices 开头全是「陈路路/绘图」「10号楼/子项名称_001」「暖施01/图号」，
+# 实测医科大图里 devices 开头全是「陈路路/绘图」「10号楼/子项名称_001」「暖施01/图号」，
 # 会把人名单层当成设备点位，必须按 tag 剔除（tag 常带 `_001` 匿名副本后缀）。
 TITLE_ATTRIB_TAG_RE = re.compile(
     r"(图\s*号|图\s*名|图别|图签|标题|子项|工程名|项目名称|建设单位|设计单位|施工单位|监理单位|勘察单位|"
@@ -413,7 +413,7 @@ def expand_block_geometry(path: str, layer_by_handle: dict, default_layer: str,
             continue
     stats["block_geometry"] = sum(len(v) for v in geom_by_block.values())
 
-    # 只摊「可能计入路由」的图层：sample-site图 6.6 万条块内线几何里绝大多数是
+    # 只摊「可能计入路由」的图层：医科大图 6.6 万条块内线几何里绝大多数是
     # 墙体/户型/家具/石材底图，全摊必撞体量闸，且块内图层带 `外层块$0$` 前缀，
     # 非路由噪声比 modelspace 更多。先解图层再过滤，建筑底图直接不进展开结果。
     all_handles = [rec[1] for recs in geom_by_block.values() for rec in recs]

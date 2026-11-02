@@ -1,0 +1,18 @@
+schema: qto-project/v1
+project_key:
+  project: 自绘样例
+  building: 示例楼
+  floor: ""
+  zone: ""
+  room: ""
+  specialty: cad-file-reader
+  source: explicit
+  review_required: false
+base_skill: cad-file-reader
+specialties:
+  cad-file-reader: active
+  tujian-suanliang: not_installed
+  anzhuang-suanliang: not_installed
+  zhuangshi-suanliang: not_installed
+  yuanlin-suanliang: not_installed
+created_at: 2026-10-19

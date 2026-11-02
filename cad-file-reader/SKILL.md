@@ -1,14 +1,14 @@
 ---
 name: cad-file-reader
 slug: cad-file-reader
-displayName: CAD 图纸识图与证据提取
-version: 0.39.2
+displayName: CAD Drawing Data Extraction: Tables, Points, Coordinates, Notes and Evidence
+version: 0.39.4
 license: CC-BY-NC-SA-4.0
 author: lis
 i18n: true
-locale: zh-CN
-locales: [zh-CN, en-US]
-description: 本地读取 AutoCAD DWG/DXF/DWT/PDF 图纸：DWG/DXF 走流式解析，PDF 走本机分流+本地 OCR。提取图层、文字、块、图框、几何、建筑/结构/总图场地/安装/电气/钢结构/市政/给排水暖通/精装修/幕墙/人防/预制装配/园林景观（苗木图例、乔灌地被候选、铺装闭合环、设计院校准、DWG块名净化与自动转DXF复扫）识图候选、系统拓扑、长度/面积/体积测量候选及规范图集元数据，均保留证据坐标与复核原因。仅输出识图与测量候选（final_quantity=false），不计算最终工程量、材料量、造价或结算量；算量交给专项技能。内置 P0–P5 优化：统一候选契约/置信度分层、大图缓存与局部解析、图层/块语义、MEP 拓扑增强、图纸对比。
+locale: en-US
+locales: [en-US, zh-CN]
+description: Extract structured data from DWG, DXF, DWT and PDF drawings: text, layers, blocks, geometry, coordinates, annotations, tables, points, areas and design notes. Results include readable summaries, review-ready tables, source evidence and JSON. Outputs are review candidates with final_quantity=false, not final quantities or settlement data.
 ---
 
 # CAD 图纸识图与证据提取（cad-file-reader）
@@ -18,7 +18,7 @@ description: 本地读取 AutoCAD DWG/DXF/DWT/PDF 图纸：DWG/DXF 走流式解�
 - **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
 - 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
 - `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
-- **DWG 解码兜底（仅特殊变体才需要，普通图不强制）**：正常 DWG 由内置 ezdwg 直读即可，不依赖任何外部 CAD/看图 App；只有 ezdwg/libredwg 都读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3# 图审版）才用独立 `ODAFileConverter` 兜底转 DXF 复扫。ODA 是免费可选后端，不随技能强制安装；**禁止调用“CAD快速看图”等看图 App 的 GUI 或内嵌 ODA 库当解析后端**（它们只暴露导 PDF/打印，无公开 CLI，grep 不到转换器）。ODA 转换只能在**复制副本**上执行，禁止覆盖原图；转换后必须回读校验图层/文字/图元，副本 DXF ≠ 图纸原件，不能把转换产物当原图证据。
+- **DWG 解码兜底（仅特殊变体才需要，普通图不强制）**：正常 DWG 由内置 ezdwg 直读即可，不依赖任何外部 CAD/看图 App；只有 ezdwg/libredwg 都读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3# 图审版）才用独立 `ODAFileConverter` 兜底转 DXF 复扫。ODA 是免费可选后端，不随技能强制安装；**禁止调用“CAD快速看图”等看图 App 的 GUI 或内嵌 ODA 库当解析后端**（它们只暴露导 PDF/打印，无公开 CLI，grep 不到转换器）。ODA 转换只能在**复制副本**上执行，禁止覆盖原图；转换后必须回读校验图层/文字/图元，副本 DXF ≠ 图纸原件，不能把转换产物当原图证据。
 - **内存双档**：常规识图默认 `CAD_MEM_LIMIT_MB=4096`（mem_guard 默认）；仅实测超 4GB 的真实大图且串行跑时临时覆盖 `CAD_MEM_LIMIT_MB=8192`，不全局改默认；mem_guard 只在识图子进程内自终止，不杀 WorkBuddy/Codex。
 
 

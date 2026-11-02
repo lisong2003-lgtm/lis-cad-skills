@@ -1,3 +1,8 @@
+## 0.1.7 · 2026-11-03
+
+- Added English-first metadata and README surface for the tri-platform package.
+- Kept local parsing and quantity algorithms unchanged.
+
 # CHANGELOG
 
 ## 0.1.6

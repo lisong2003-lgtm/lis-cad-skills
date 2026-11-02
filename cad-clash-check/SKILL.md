@@ -1,12 +1,17 @@
 ---
 name: cad-clash-check
 slug: cad-clash-check
-displayName: 跨专业碰撞校对·按轴定位
-version: 0.3.0
+displayName: Cross-Discipline Clash Review
+version: 0.3.1
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
-description: 把各专业 DWG/DXF 图纸（或已解析识图产物）自动判专业、比对构件，输出跨专业碰撞候选位置与属性冲突清单（json+md）：优先消费 cad-file-reader 的 axis_networks[] 轴格区间做轴格定位（不同专业落入同轴格才判碰撞，坐标为佐证）；轴网缺失或不可用时如实降级为坐标判定并标 axis_missing=degraded。目标是图纸会审前的快速交叉核对；是 2D 图面重叠/冲突倾向提示，候选须人工复核，非 BIM 碰撞检测。
+description: Reviews DWG/DXF drawings or parsed contracts for cross-discipline 2D overlap and attribute-conflict candidates. Uses axis-grid location when available and degrades honestly when axis data is missing; outputs are human-review candidates, not BIM clash checks.
+i18n:
+  en: README.en.md
+  zh: SKILL.md
+locale: en-US
+locales: [en-US, zh-CN]
 ---
 
 # cad-clash-check · 跨专业碰撞校对

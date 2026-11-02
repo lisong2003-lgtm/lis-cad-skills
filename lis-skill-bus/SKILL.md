@@ -1,13 +1,18 @@
 ---
 name: lis-skill-bus
 slug: lis-skill-bus
-displayName: 本地 Skill 联动总线
-description: 本地 Skill 联动总线（MCP server 安装器，非业务算法技能）。把 5 个 CAD 技能（cad-file-reader、土建 tujian-suanliang、安装 anzhuang-suanliang、装饰 zhuangshi-suanliang、园林 yuanlin-suanliang）的项目状态与识图契约接在一起：同一张图只解析一次，各算量技能共享复用。完全本地、不联网；不装也能用（各技能自动降级到自身 state）。前置依赖 cad-file-reader + 至少一个算量技能。一行命令安装到 $HOME/.codex/mcp_servers/lis-skill-bus 并可选注册 MCP。
-version: 0.1.6
+displayName: Local Skill Bus for CAD Evidence Contracts
+version: 0.1.7
 license: MIT
+i18n:
+  en: README.en.md
+  zh: README.md
+locale: en-US
+locales: [en-US, zh-CN]
+description: Connects local CAD skills so one drawing is parsed once and its evidence-backed contract is shared across downstream quantity skills. Runs locally without network and degrades safely when the bus is absent.
 ---
 
-# lis-skill-bus v0.1.6（本地 MCP server 安装器）
+# lis-skill-bus v0.1.7（本地 MCP server 安装器）
 
 ## 识图契约红线（硬规则，禁止绕行）
 - 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。

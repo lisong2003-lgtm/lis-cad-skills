@@ -1,0 +1,98 @@
+{
+  "name": "cad-suite",
+  "slug": "cad-suite",
+  "displayName": "CAD 融合流程 · 从图纸到提取数据一条链",
+  "version": "0.3.1",
+  "schema": "cad-suite/manifest-v1",
+  "description": "七技能融合编排层：本地识图、证据与置信契约、图纸关系、跨图聚合、跨专业碰撞、按专业派发算量并出统一台账。final_quantity 恒 false。",
+  "platform": [
+    "macos",
+    "linux",
+    "windows"
+  ],
+  "min_python": "3.10",
+  "entry": {
+    "skill_md": "SKILL.md",
+    "runner": "scripts/suite_run.py",
+    "resync": "scripts/resync_modules.py"
+  },
+  "red_lines": [
+    "图纸只用本机/挂载盘/NAS，字节不上云",
+    "样本与公司资料不发布、不上传、不入包",
+    "七个源模块内部一字不改（改的是探测与打包）",
+    "final_quantity=false：候选+复核清单，不冒充结算量",
+    "跨专业校对是 2D 一致性提示，不是 BIM 碰撞检测"
+  ],
+  "modules": [
+    {
+      "slug": "cad-file-reader",
+      "role": "识图与契约（18 个识图 pack）",
+      "entry": "modules/cad-file-reader/scripts"
+    },
+    {
+      "slug": "tujian-suanliang",
+      "role": "土建算量/钢筋吨位/构件校对",
+      "entry": "modules/tujian-suanliang/scripts"
+    },
+    {
+      "slug": "zhuangshi-suanliang",
+      "role": "装饰算量",
+      "entry": "modules/zhuangshi-suanliang/scripts"
+    },
+    {
+      "slug": "anzhuang-suanliang",
+      "role": "安装算量/市政管长",
+      "entry": "modules/anzhuang-suanliang/scripts"
+    },
+    {
+      "slug": "yuanlin-suanliang",
+      "role": "园林算量",
+      "entry": "modules/yuanlin-suanliang/scripts"
+    },
+    {
+      "slug": "lis-skill-bus",
+      "role": "内部缓存与溯源（无 scripts/ 目录，探测按根目录）",
+      "entry": "modules/lis-skill-bus"
+    },
+    {
+      "slug": "cross",
+      "role": "跨专业校对公共引擎（CLI: cross/compare.py / cross/adapt.py）；0.2.4 起为转发层，实现唯一真相在 cad-clash-check",
+      "entry": "cross",
+      "note": "engine.py / adapt.py 不再自带实现，符号转出 cad-clash-check（clash_engine/clash_adapt）；依赖缺失时报错退出，不静默降级。一致性由 cross/tests/test_cross_parity.py 钉住"
+    },
+    {
+      "slug": "cad-clash-check",
+      "role": "跨专业碰撞唯一实现：轴格定位、构件三分类、属性冲突与洞口语义",
+      "entry": "modules/cad-clash-check/scripts"
+    }
+  ],
+  "extract": {
+    "normalize": "extract/normalize.py",
+    "confidence": "extract/confidence.py",
+    "merge_floor": "extract/merge_floor.py",
+    "benchmark": "extract/benchmark.py",
+    "note": "三档候选→结构化表 / 三档占比基线与复核清单 / 跨图楼层归并 / 速度基线"
+  },
+  "scripts": [
+    "scripts/suite_run.py",
+    "scripts/resync_modules.py",
+    "cross/clash_bridge.py",
+    "extract/normalize.py",
+    "extract/confidence.py",
+    "extract/merge_floor.py",
+    "extract/benchmark.py",
+    "scripts/cad_pipeline.py"
+  ],
+  "tests": [
+    "extract/tests/test_normalize.py",
+    "extract/tests/test_confidence.py",
+    "extract/tests/test_merge_floor.py",
+    "cross/tests/test_cross_engine.py",
+    "cross/tests/test_cross_parity.py"
+  ],
+  "dependencies": {
+    "python": ">=3.10（源模块用 from __future__ import annotations + 3.10 语法）",
+    "vendor": "ezdxf/ezdwg 由 cad-file-reader install_vendor.sh 自举",
+    "optional_skill": "cad-clash-check（跨专业校对唯一实现；cross/ 与 --with-clash 均依赖它。缺失时 cross/ 报错退出、--with-clash 跳过并 warn）"
+  }
+}

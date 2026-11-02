@@ -1,3 +1,8 @@
+## 0.3.1 · 2026-11-03
+
+- Added English-first metadata and README surface for the tri-platform package.
+- Kept local parsing and quantity algorithms unchanged.
+
 ## 0.3.0（2026-11-01 · 按轴定位）
 - **轴格主判**：消费 cad-file-reader 新增可选 `axis_networks[]`，构图轴格区间；两侧可用轴格时
   只比较落入同轴格的异专业构件（bbox→轴格区间判定，坐标为佐证不单独成依据）。
@@ -5,9 +10,9 @@
   `axis_meta.mode=coordinate-fallback`，不冒充 pass。
 - **报告与状态**：meta/state/报告带 axis_networks 统计（数量/可用/降级）、mode、缺轴原因；
   md 报告注明轴格主判或降级。
-- **真图 gate 回放**（复用已解析产物，未二次识图）：sample-site MEP 电气×暖通/给排水缺轴
+- **真图 gate 回放**（复用已解析产物，未二次识图）：医科大 MEP 电气×暖通/给排水缺轴
   →坐标降级 degraded；暖通×给排水 axis-grid 可用但 axis sheet 覆盖外构件 333/122 → 0 候选诚实 zero；
-  sample-building drawing-A 轴网可用 × drawing-B 缺轴 → 结构×结构坐标降级 degraded。
+  华山建筑 hs_G-3 轴网可用 × hs_J23 缺轴 → 结构×结构坐标降级 degraded。
 - **测试 41 → 51**（TestV03AxisGrid 10 项：轴网解析、轴格构造、bbox→格、同轴格、缺轴降级、outside 处理等）。
 # CHANGELOG
 

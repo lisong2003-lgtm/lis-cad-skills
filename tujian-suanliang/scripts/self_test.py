@@ -42,6 +42,7 @@ CHECK_FILES: list[str] = [
         "scripts/run_qty.cmd",
         "rules/口径.json",
         "packs/quantity-pipeline/SKILL.md",
+        "scripts/tests/test_qty_core.py"
 ]
 CLI_HELP: list[str] = [
         "cad_quantity_pipeline.py"

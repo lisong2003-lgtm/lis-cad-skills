@@ -1,6 +1,6 @@
 {
   "name": "anzhuang-suanliang",
-  "version": "0.4.31",
+  "version": "0.4.32",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -9,16 +9,13 @@
     "python": ">=3.10"
   },
   "scripts": [
-    "scripts/anzhuang_statesync.cmd",
     "scripts/anzhuang_statesync.py",
     "scripts/anzhuang_statesync.sh",
     "scripts/ensure_base.sh",
     "scripts/i18n.py",
     "scripts/lint_cross_platform.py",
-    "scripts/mep_plan.cmd",
     "scripts/mep_plan.py",
     "scripts/mep_plan.sh",
-    "scripts/mep_scan.cmd",
     "scripts/mep_scan.py",
     "scripts/mep_scan.sh",
     "scripts/municipal_pipe_length.py",
@@ -30,7 +27,6 @@
     "scripts/smoke_utf8_json.py"
   ],
   "references": [
-    ".gitignore",
     "CHANGELOG.md",
     "LICENSE.md",
     "README.md",
@@ -41,7 +37,8 @@
     "README.en.md"
   ],
   "tests": [
-    "scripts/self_test.py"
+    "scripts/self_test.py",
+    "scripts/tests/test_municipal_pipe_length.py"
   ],
   "privacy": "DWG 只在本机读取；输出 xlsx/JSON 由使用者自行保管。发布包不含项目数据和图纸。",
   "notes": "输出为草稿口径，不输出金额，不替代专业算量、翻样、下料、结算。",
