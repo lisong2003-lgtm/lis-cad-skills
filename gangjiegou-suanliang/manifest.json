@@ -1,0 +1,35 @@
+{
+  "name": "gangjiegou-suanliang",
+  "version": "0.2.0",
+  "author": "lis",
+  "license": "CC-BY-NC-SA-4.0",
+  "entry": "SKILL.md",
+  "requires": {
+    "skill": "cad-file-reader>=0.39.2 with packs/steel-geometry",
+    "python": ">=3.10"
+  },
+  "scripts": [
+    "scripts/pyboot.py",
+    "scripts/steel_tonnage.py",
+    "scripts/steel_tonnage.sh"
+  ],
+  "references": [
+    "CHANGELOG.md",
+    "LICENSE.md",
+    "README.en.md",
+    "README.md",
+    "requirements.txt"
+  ],
+  "tests": [
+    "scripts/tests/test_steel_tonnage.py"
+  ],
+  "privacy": "只在本机消费已有识图契约 JSON；发布包不含 DWG/DXF/PDF、项目数据、公司路径或图纸内容。",
+  "notes": "输出为 ±15% 吨位估算带，final_quantity=false；不替代深化设计、翻样、下料、结算与报价。",
+  "contract_schema": "cad-steel-geometry/v1 -> cad-steel-tonnage/v0.2",
+  "description": "钢结构识图契约 JSON → 牌号分档、构件归并、连接计数、涂装面积、截面谱与吨位估算带（json/md/csv）；支持 GB/T 706 号数型槽钢/工字钢查表与两档长度口径。",
+  "platforms": [
+    "macos",
+    "windows",
+    "linux"
+  ]
+}
