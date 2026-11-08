@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5 · 2026-11-09 · statesync 代码加载加固
+
+- **移除环境变量注入入口**：`gangjiegou_statesync.py` 不再读取 `CAD_FILE_READER_SCRIPTS` 并把该目录插到 `sys.path` 首位，只按固定布局（融合包 `modules/`、技能根、用户技能目录）定位 `cad_statesync_core.py`。环境变量不再能改变代码加载来源。
+- **新增回归**：设置伪造的 `CAD_FILE_READER_SCRIPTS` 指向含 `cad_statesync_core.py` 的临时目录，断言该模块不会被导入；合计 64 项单测。
+- **背景**：ClawHub 0.3.4 扫描的 SkillSpector `LP1` 指出该环境变量可形成条件式代码加载；本版按该真实风险修正，不把扫描项当作纯误报。
+
 ## 0.3.4 · 2026-11-08 · 安全扫描可解释性
 
 - **前置技能边界更明确**：SKILL.md 不再把 `cad-file-reader` 的扫描命令写成由本技能执行的步骤，改为接口顺序说明；被测图命令与参数仍完整保留在 README，实际执行责任不变。

@@ -26,12 +26,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def _load_core():
-    """多候选定位 cad_statesync_core（融合包/技能根/环境变量/家目录）。"""
-    import os
+    """按固定布局定位 cad_statesync_core（融合包/技能根/家目录）。
+
+    不接受环境变量或任意目录注入，避免把 CAD_FILE_READER_SCRIPTS 一类
+    变量变成代码加载入口；自定义安装请放到下列固定布局之一。
+    """
     candidates = []
-    env = os.environ.get("CAD_FILE_READER_SCRIPTS")
-    if env:
-        candidates.append(Path(env))
     here = SCRIPT_DIR
     # 融合包布局：modules/<本技能>/scripts -> modules/cad-file-reader/scripts
     candidates.append(here.parent.parent / "cad-file-reader" / "scripts")
@@ -50,7 +50,7 @@ def _load_core():
 
 if not _load_core():
     print("[gangjiegou statesync] 找不到共享模块 cad_statesync_core.py"
-          "（试过 CAD_FILE_READER_SCRIPTS / 融合包 modules / 技能根）", file=sys.stderr)
+          "（试过融合包 modules / 技能根 / 家目录安装）", file=sys.stderr)
     raise SystemExit(2)
 
 from cad_statesync_core import Core  # noqa: E402

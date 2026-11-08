@@ -145,5 +145,30 @@ class TestToolScope(unittest.TestCase):
         self.assertIn("不联网、不上传、不调用外部 API", text)
 
 
+class TestStatesyncCoreLoading(unittest.TestCase):
+    def test_environment_cannot_inject_core_module(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            marker = root / "injected.txt"
+            fake = root / "fake-core"
+            fake.mkdir()
+            (fake / "cad_statesync_core.py").write_text(
+                "from pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('loaded', encoding='utf-8')\n"
+                "class Core:\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["CAD_FILE_READER_SCRIPTS"] = str(fake)
+            p = subprocess.run(
+                [sys.executable, str(SCRIPTS / "gangjiegou_statesync.py"), "--help"],
+                cwd=str(SKILL), env=env, capture_output=True, text=True,
+                timeout=60, errors="replace",
+            )
+            self.assertFalse(marker.exists(), p.stdout + p.stderr)
+            self.assertNotIn("CAD_FILE_READER_SCRIPTS", p.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
