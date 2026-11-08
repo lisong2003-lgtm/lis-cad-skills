@@ -1384,7 +1384,7 @@ def paving_area_implausible(raw_area: float, frame_m2: float,
                             cap_m2: float = 1e8, ratio_limit: float = 3.0) -> tuple[bool, str]:
     """铺装强算候选面积的合理性判据（真图驱动，0.4.33）。
 
-    真图教训：经十一路种植总图图层名解码失败，--paving-all-geometry 对全几何做闭环，
+    真图教训：sample-road种植总图图层名解码失败，--paving-all-geometry 对全几何做闭环，
     把图框线、苗木表表格线、种植符号一并闭成"假环"，算出 74 亿 m²（真实铺装应为万级）。
     判据一（绝对上限）：没有任何单体景观/园林工程的铺装能到 cap_m2（默认 100 km²）；
     判据二（相对图幅）：仅当图幅外接面积本身可信（<cap_m2）时才用——多图框 DWG 的
@@ -1558,7 +1558,7 @@ def paving_rows(landscape, scan, cfg, scale_unit, all_geometry=False):
             ratio = (raw_area / frame_m2) if frame_m2 > 0 else 0.0
             implausible_note = (why + "；图层名缺失下全几何闭环会把图框、表格线、"
                                "苗木符号一并闭成假环；本轮不出面积，只留证据（真图教训："
-                               "经十一路种植总图曾算出 74 亿 m²）")
+                               "sample-road种植总图曾算出 74 亿 m²）")
             review.append({"layer": "（无图层，全几何候选）",
                            "reason": implausible_note,
                            "evidence": f"raw_candidate_m2={raw_area:.2f}, frame_m2={frame_m2:.2f}, ratio={ratio:.1f}",

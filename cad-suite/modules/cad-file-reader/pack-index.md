@@ -6,9 +6,9 @@
 |---|---|---|
 | 大图快速读取、关键词、编号、图框 | `SKILL.md` | `scripts/cad_scan.sh` |
 | 小图实体树、SVG、整树统计 | `SKILL.md` | `scripts/read_cad.sh` |
-| DWG 转 DXF / 批量转换 | `SKILL.md` | `scripts/convert_dwg.sh` |
-| 说明、构件规则、规范引用初解 | `SKILL.md` | `scripts/cad_interpret.sh` |
-| 规范/图集元数据与输入缺口 | `SKILL.md` | `scripts/cad_normative.sh` |
+| DWG 转 DXF / 批量转换 | `docs/conversion-and-normative.md` | `scripts/convert_dwg.sh` |
+| 说明、构件规则、规范引用初解 | `docs/conversion-and-normative.md` | `scripts/cad_interpret.sh` |
+| 规范/图集元数据与输入缺口 | `docs/conversion-and-normative.md` | `scripts/cad_normative.sh` |
 | 装饰识图、房间/洞口/做法候选、投影校验 | `packs/descriptive-geometry/SKILL.md` | `scripts/cad_descriptive_geometry.sh` |
 | 安装识图、系统/路由/设备/立管候选、竖向路由、系统拓扑、连通性审计 | `packs/mep-geometry/SKILL.md` | `scripts/cad_mep_geometry.sh` |
 | 结构识图、梁/板/柱/墙/基础/楼梯/洞口/配筋/编号/节点/轴网候选、证据坐标 | `packs/structural-geometry/SKILL.md` | `scripts/cad_structural_geometry.sh` |
@@ -40,6 +40,10 @@
 | qto 项目初始化/包装/占位工具 | `docs/qto-linkage.md` | `scripts/qto_project.py` |
 | SkillHub 轻量包安装/样例重建（chmod、PyPI 零配置、generate_sample） | `README.md` | `scripts/setup.sh`、`scripts/install_vendor.sh`、`scripts/generate_sample.py` |
 | 统一候选契约、置信度分层、复核原因、交接 JSON 校验 | `SKILL.md` | `scripts/cad_validate.sh` |
+| 可靠性策略、快速失败、超时/内存看门狗、PDF 复核截图 | `docs/reliability.md` | `scripts/cad_scan.sh`、`scripts/cad_batch.sh`、`scripts/cad_pdf_ocr.sh` |
+| lis-skill-bus 安装、push/pull、路径优先级、核心 section | `docs/bus-integration.md` | `scripts/cad_statesync.sh` |
+| 批量识图台账、断点续跑、逐图失败记录 | `docs/batch-workbook.md` | `scripts/cad_batch.sh` |
+| 跨图聚合、图纸关系、轴网核对、钢筋牌号 | `packs/cross-drawing-aggregation/SKILL.md` | `scripts/project_aggregate.py`、`scripts/drawing_relation.py`、`scripts/rebar_grade.py` |
 
 ## 资源
 
@@ -56,9 +60,11 @@
 - `packs/steel-geometry/rules.json`：钢结构识图规则；只保存识别模式和证据边界。
 - `packs/municipal-geometry/rules.json`：市政专业识图规则；只保存识别模式和证据边界。
 - `packs/measurement-candidates/SKILL.md`：测量候选契约、比例单位规则和专项算量交接。
+- `docs/reliability.md`、`docs/bus-integration.md`、`docs/batch-workbook.md`：低频操作细节，按需读取。
+- `packs/cross-drawing-aggregation/SKILL.md`：跨图聚合与钢筋牌号规则。
 - `schemas/candidate-v0.schema.json`：统一候选 JSON Schema；识图与测量输出先经 `scripts/cad_validate.sh` 校验。
 - `schemas/qto-project-v1.schema.json`：五件套联动契约 schema；项目目录校验经 `scripts/qto_validate.sh`。
 - `rules/standards.json`：规范/图集元数据、版本状态和资料入口；不保存全文。
 - `scripts/tests/`：识图行为回归；改动提取或报告逻辑后运行相关测试。
 
-> 结构混凝土/钢筋算量、梁板柱墙算量流水线已迁到 tujian-suanliang（本机目录 shangwu-suanliang）。本技能不再路由 quantity-pipeline。
+> 结构混凝土/钢筋算量、梁板柱墙算量流水线已迁到 tujian-suanliang。本技能不再路由 quantity-pipeline。

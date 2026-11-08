@@ -1,17 +1,12 @@
 ---
 name: cad-clash-check
 slug: cad-clash-check
-displayName: Cross-Discipline Clash Review
-version: 0.3.0
+displayName: 跨专业碰撞校对·按轴定位
+version: 0.3.3
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
-description: Reviews DWG/DXF drawings or parsed contracts for cross-discipline 2D overlap and attribute-conflict candidates. Uses axis-grid location when available and degrades honestly when axis data is missing; outputs are human-review candidates, not BIM clash checks.
-i18n:
-  en: README.en.md
-  zh: SKILL.md
-locale: en-US
-locales: [en-US, zh-CN]
+description: 消费 DWG/DXF 或 cad-file-reader 识图产物，输出跨专业碰撞候选和属性冲突清单；2D 图面提示，须人工复核。
 ---
 
 # cad-clash-check · 跨专业碰撞校对

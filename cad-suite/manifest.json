@@ -2,7 +2,7 @@
   "name": "cad-suite",
   "slug": "cad-suite",
   "displayName": "CAD 融合流程 · 从图纸到提取数据一条链",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "schema": "cad-suite/manifest-v1",
   "description": "七技能融合编排层：本地识图、证据与置信契约、图纸关系、跨图聚合、跨专业碰撞、按专业派发算量并出统一台账。final_quantity 恒 false。",
   "platform": [

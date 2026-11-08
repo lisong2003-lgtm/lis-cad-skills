@@ -1,13 +1,20 @@
 ## 0.3.0（2026-11-01 · 按轴定位）
+
+## 0.3.3 · 2026-11-08 · 技能层瘦身与发布完整性
+
+- **SKILL.md 瘦身**：4,684 B → 4,298 B（-8.2%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。
+- **发布完整性**：被引用文件随包存在、Python/bash/JSON 语法通过、技能自检 PASS；未实现的检查如实记 SKIP。
+- **脱敏**：本机路径、真实项目名与公司资料引用替换为通用示例；平台专用入口只改发布副本。
+
 - **轴格主判**：消费 cad-file-reader 新增可选 `axis_networks[]`，构图轴格区间；两侧可用轴格时
   只比较落入同轴格的异专业构件（bbox→轴格区间判定，坐标为佐证不单独成依据）。
 - **诚实降级**：一侧缺轴网/轴格不可用时退回 v0.2 坐标判定并标 `axis_missing=degraded`、
   `axis_meta.mode=coordinate-fallback`，不冒充 pass。
 - **报告与状态**：meta/state/报告带 axis_networks 统计（数量/可用/降级）、mode、缺轴原因；
   md 报告注明轴格主判或降级。
-- **真图 gate 回放**（复用已解析产物，未二次识图）：医科大 MEP 电气×暖通/给排水缺轴
+- **真图 gate 回放**（复用已解析产物，未二次识图）：sample-site MEP 电气×暖通/给排水缺轴
   →坐标降级 degraded；暖通×给排水 axis-grid 可用但 axis sheet 覆盖外构件 333/122 → 0 候选诚实 zero；
-  华山建筑 hs_G-3 轴网可用 × hs_J23 缺轴 → 结构×结构坐标降级 degraded。
+  sample-building drawing-A 轴网可用 × drawing-B 缺轴 → 结构×结构坐标降级 degraded。
 - **测试 41 → 51**（TestV03AxisGrid 10 项：轴网解析、轴格构造、bbox→格、同轴格、缺轴降级、outside 处理等）。
 # CHANGELOG
 

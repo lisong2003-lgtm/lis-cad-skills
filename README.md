@@ -1,17 +1,18 @@
 # lis-cad-skills
 
-建筑工程识图、几何提取、跨专业复核与算量技能集（8 个）。本机运行、不联网、不上传图纸；输出是带证据坐标、置信度和复核标记的候选结果，不是最终结算结论。
+建筑工程识图、几何提取、跨专业复核与算量技能集（9 个）。本机运行、不联网、不上传图纸；输出是带证据坐标、置信度和复核标记的候选结果，不是最终结算结论。
 
 | 技能 | 版本 | 许可 | 用途 |
 |---|---|---|---|
-| `cad-file-reader` | 0.39.4 | CC-BY-NC-SA-4.0 | CAD/PDF 识图与证据提取（DWG/DXF/DWT/PDF） |
-| `cad-suite` | 0.3.1 | CC-BY-NC-SA-4.0 | 识图、关系推断、聚合与跨专业复核编排 |
-| `cad-clash-check` | 0.3.1 | CC-BY-NC-SA-4.0 | 跨专业 2D 碰撞与属性冲突候选 |
-| `zhuangshi-suanliang` | 0.9.30 | CC-BY-NC-SA-4.0 | 装饰算量 · 概算与物资计划 |
-| `anzhuang-suanliang` | 0.4.32 | CC-BY-NC-SA-4.0 | 安装算量 |
-| `tujian-suanliang` | 0.9.38 | CC-BY-NC-SA-4.0 | 土建算量（混凝土/钢筋） |
-| `yuanlin-suanliang` | 0.4.34 | CC-BY-NC-SA-4.0 | 园林景观算量 |
-| `lis-skill-bus` | 0.1.7 | MIT | 技能间共享识图状态与证据契约 |
+| `cad-file-reader` | 0.39.6 | CC-BY-NC-SA-4.0 | CAD/PDF 识图与证据提取（DWG/DXF/DWT/PDF） |
+| `cad-suite` | 0.3.2 | CC-BY-NC-SA-4.0 | 识图、关系推断、聚合与跨专业复核编排 |
+| `cad-clash-check` | 0.3.3 | CC-BY-NC-SA-4.0 | 跨专业 2D 碰撞与属性冲突候选 |
+| `zhuangshi-suanliang` | 0.9.32 | CC-BY-NC-SA-4.0 | 装饰算量 · 概算与物资计划 |
+| `anzhuang-suanliang` | 0.4.34 | CC-BY-NC-SA-4.0 | 安装算量 |
+| `tujian-suanliang` | 0.9.40 | CC-BY-NC-SA-4.0 | 土建算量（混凝土/钢筋） |
+| `yuanlin-suanliang` | 0.4.36 | CC-BY-NC-SA-4.0 | 园林景观算量 |
+| `gangjiegou-suanliang` | 0.3.1 | CC-BY-NC-SA-4.0 | 钢结构算量（吨位估算带） |
+| `lis-skill-bus` | 0.1.10 | MIT | 技能间共享识图状态与证据契约 |
 
 ## 许可要点
 

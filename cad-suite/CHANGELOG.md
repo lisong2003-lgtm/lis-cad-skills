@@ -1,3 +1,9 @@
+## 0.3.2 · 2026-11-08
+
+- 七个模块同步到本机第二轮瘦身版本（cad-file-reader 0.39.6 / 土建 0.9.40 / 装饰 0.9.32 / 安装 0.4.34 / 园林 0.4.36 / cad-clash-check 0.3.3 / bus 0.1.10）。
+- 模块内 SKILL.md 精简、低频细则外移到 references/docs/packs 按需加载，算法与口径不变；`resync_modules.py --check` 通过。
+- 发布前完整性检查、引用断链检查、Python/Shell/JSON 语法检查与各模块自检通过。
+
 ## 0.3.1 · 2026-11-03
 
 - Added English-first metadata and README surface for the tri-platform package.

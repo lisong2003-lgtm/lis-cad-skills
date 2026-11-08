@@ -13,7 +13,7 @@
 用法
     python3 scripts/drawing_source.py                          # 默认扫挂载盘
     python3 scripts/drawing_source.py --json-out /tmp/dwg.json
-    python3 scripts/drawing_source.py --roots /Volumes/扩展 --no-archive
+    python3 scripts/drawing_source.py --roots /sample-drive --no-archive
     python3 scripts/drawing_source.py --stats-only
 """
 from __future__ import annotations

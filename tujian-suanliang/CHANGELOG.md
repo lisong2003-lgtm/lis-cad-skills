@@ -1,14 +1,16 @@
-## 0.9.38 · 2026-11-03
-
-- Added English-first metadata and README surface for the tri-platform package.
-- Kept local parsing and quantity algorithms unchanged.
-
 # Changelog
+
+## 0.9.40 · 2026-11-08 · 技能层瘦身与发布完整性
+
+- **SKILL.md 瘦身**：24,733 B → 12,225 B（-50.6%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。
+- **发布完整性**：被引用文件随包存在、Python/bash/JSON 语法通过、技能自检 PASS；未实现的检查如实记 SKIP。
+- **脱敏**：本机路径、真实项目名与公司资料引用替换为通用示例；平台专用入口只改发布副本。
+
 
 
 ## 0.9.37 · 2026-10-30
 
-- **真图（华山-土建 10 张）楼层切分三处修复**，真图名从 262 个 → 555 个，10 张图张张出图名：
+- **真图（sample-tujian 10 张）楼层切分三处修复**，真图名从 262 个 → 555 个，10 张图张张出图名：
   - `find_titles` 修掉变量遮蔽 bug：算"图名到最近构件标注的距离"时写成了外层 rows 循环
     残留的 `y`（解包成 `_y` 却在表达式里用 `y`），所有图名共用一个错坐标、半径被算小。
     地库梁图（图名标在图面上方 77 m 处）因此一个真图名都认不出，整张图楼层切分失效。
@@ -131,7 +133,7 @@
   - **推荐区间 = 两带交集**；交集为空时明确说偏差方向（图面直径构成偏大/偏小），不硬凑一个数；
   - 输出 `.md/.csv/.xlsx`，全部标注「估算带（±20~30%），final_quantity=false，不替代翻样/对量/结算」。
 - **真图验证**：J-5 剪力墙平法层（`69.600～74.200`）实测：口径A 0.5~0.72 t，图面加权平均直径 Φ22.6 → 口径B 0.68~0.72 t，交集 0.68~0.72 t。
-- **新增 10 项单测**（`scripts/tests/test_rebar_tonnage.py`）：米重公式、口径A 区间、缺含筋率类别回退、强度构成与加权直径、带位置锚点与钳位、口径B 收窄、交集判定、端到端合成数据、空计划报错；全套 325→335 项。
+- **新增 10 项单测**（scripts/tests（本机开发目录））：米重公式、口径A 区间、缺含筋率类别回退、强度构成与加权直径、带位置锚点与钳位、口径B 收窄、交集判定、端到端合成数据、空计划报错；全套 325→335 项。
 
 ## 0.9.29
 
@@ -151,7 +153,7 @@
 
 - **授权与保留** 新增「授权与保留」段落：作者 lis 声明本技能可商用/可再分发/可对外授权，商用前按双许可说明确认是否需联系作者申报。
 - **脱敏（发布合规）** rules 中的公司内部来源字段由「公司知识库/…/规范图集」改为「公开规范与行业通用做法整理」，不再引用公司内部资料路径。
-- **版本对齐** 本机 `<skills-root>`、`<workbuddy-skills-root>` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
+- **版本对齐** 本机 `$CODEX_SKILLS_DIR/skills`、`~/.workbuddy/skills` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
 
 ## 0.9.25
 
@@ -166,15 +168,15 @@
 - **新增** `requirements.txt`、Windows 启动器 `run_qty.cmd` / `qty_statesync.cmd`。
 - **文档** 命令统一改为 `bash scripts/*.sh`。
 - **修复（发布兼容）** `qty_core.py` 调用底座的 `cad_measure.sh / cad_validate.sh / cad_compare.sh / cad_normative.sh / cad_scan.sh`，以及 `qty_statesync.py` 调用 `cad_statesync.sh`，全部改为 `bash` 启动；`scripts/*.sh` 转发壳同步改为 `exec bash`。SkillHub 打包丢失执行位后不再出现 PermissionError。
-- **修复（跨 Agent）** `qty_core.py` / `cad_quantity_pipeline.py` 的底座探测增加「同级目录 + `<workbuddy-skills-root>/*/cad-file-reader`」，原 `~/.claude`、`$HOME/.codex` 保留为回退。
-- **测试** `test_qty_core.py` 断言同步更新为 `args[0] == "bash"`（320 用例保持全过）。
+- **修复（跨 Agent）** `qty_core.py` / `cad_quantity_pipeline.py` 的底座探测增加「同级目录 + `~/.workbuddy/skills/*/cad-file-reader`」，原 `~/.claude`、`$HOME/.codex` 保留为回退。
+- **测试** `开发期单测` 断言同步更新为 `args[0] == "bash"`（320 用例保持全过）。
 
 ## 0.9.23 (2026-10-23)
 - 修复 SkillHub 版 Windows 无 `.cmd` 时的接线说明：改为 `python scripts/*_statesync.py` 等价调用（bus 安装用 `python install_py.py --apply`）；GitHub 完整包保留 `.cmd`。平台发布调整，算法/契约/口径不变。
 
 
 ## 0.9.22 (2026-10-22)
-- lis-skill-bus 可选联动（试点）：run_qty.sh 新增 --bus-pull，命中 cad-contract/v1 免重复解图；scripts/qty_statesync.py, scripts/qty_statesync.sh, scripts/qty_statesync.cmd 独立拉取；bus 未装自动降级本机状态；Windows statesync.cmd（未实机跑通，仅静态校验）。算量/扣减/分账口径不变。
+- lis-skill-bus 可选联动（试点）：run_qty.sh 新增 --bus-pull，命中 cad-contract/v1 免重复解图；`scripts/qty_statesync.py`、`.sh` 与 `.cmd` 独立拉取；bus 未装自动降级本机状态；Windows statesync.cmd（未实机跑通，仅静态校验）。算量/扣减/分账口径不变。
 
 ## 0.9.21 (2026-10-21)
 - 三平台对齐（cross-platform + i18n overseas）：README.en.md、`--lang en|zh` 主入口、i18n.py、CFI 三平台 workflow 全绿。
@@ -203,7 +205,7 @@
 ## 0.9.12 — 2026-10-16（人防结构专项复核清单）
 - 新增 `scripts/cad_civil_defense_checklist.py`（schema `cad-civil-defense-checklist/v1`）：对结构图做人防专项复核清单，7 项检查（保护单元/抗力等级、门框墙/封堵、临空墙/防护墙、口部/密闭通道、人防顶底板、顶梁/墙柱/基础、MEP 接口），输出证据坐标与复核原因。
 - 边界：`formal_ready=false`，只做识图与复核清单，不输出人防结构工程量。
-- 新增单测 `scripts/tests/test_cad_civil_defense_checklist.py`。
+- 新增单测 scripts/tests（本机开发目录）。
 - 真图验证：项目酒店人防结构图 `国贸酒店人防结构.dwg` 作 detail 扫描，text_records=12154，7/7 项 evidence_found；命中人防术语 165 条、口部术语 19 条、MEP 术语 3 条（示例：`核6常6级`、`门框墙内所有预埋件…`、`带*墙体为人防防护墙体兼平时剪力墙`、`人防顶梁平法施工图`、`防爆波电缆井`）。
 - 自测：`run_preflight.sh` 全量 320 项通过，发布合规扫描 problems=0。
 

@@ -23,6 +23,7 @@ check() { # name expected_dir marker file
 check "vendor/ezdwg"  "$SKILL_DIR/vendor/ezdwg"  "$SKILL_DIR/vendor/ezdxf/__init__.py"
 check "vendor/ezdxf"  "$SKILL_DIR/vendor/ezdxf"  "$SKILL_DIR/vendor/ezdxf/__init__.py"
 check "vendor/fontTools" "$SKILL_DIR/vendor/fontTools" "$SKILL_DIR/vendor/fontTools/__init__.py"
+check "vendor/typing_extensions" "$SKILL_DIR/vendor" "$SKILL_DIR/vendor/typing_extensions.py"
 imported=$("$PYTHON_BIN" -c "import importlib.util as u; print('1' if u.find_spec('numpy') else '0')" 2>/dev/null || echo "0")
 if [ "$imported" = 1 ]; then
   echo "numpy: ok"
@@ -30,7 +31,13 @@ else
   echo "numpy: 缺"
 fi
 if [ "$imported" != 1 ]; then echo "  （缺 numpy 只影响梁线几何估算；DWG/DXF 文字/图层/测量仍可用）"; fi
+te_imported=$("$PYTHON_BIN" -c "import importlib.util as u; print('1' if u.find_spec('typing_extensions') else '0')" 2>/dev/null || echo "0")
+if [ "$te_imported" = 1 ]; then
+  echo "typing_extensions: ok"
+else
+  echo "typing_extensions: 缺（ezdxf 硬依赖，缺了 DXF 解析整条路会失败）"
+fi
 
 if [ "$MINIMAL" = "--minimal" ]; then
-  echo "deps: $([ -d "$SKILL_DIR/vendor/ezdxf" ] && [ "$imported" = 1 ] && echo full || echo partial)  -> 缺依赖功能会降级为 review"
+  echo "deps: $([ -d "$SKILL_DIR/vendor/ezdxf" ] && [ "$imported" = 1 ] && [ "$te_imported" = 1 ] && echo full || echo partial)  -> 缺依赖功能会降级为 review"
 fi

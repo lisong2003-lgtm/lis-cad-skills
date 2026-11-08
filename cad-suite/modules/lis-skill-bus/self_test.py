@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""lis-skill-bus 自测 v0.1.6：纯 stdlib，无网络，不污染真实 SKILLBUS_STATE_DIR。
+"""lis-skill-bus 自测 v0.1.9：纯 stdlib，无网络，不污染真实 SKILLBUS_STATE_DIR。
 
 覆盖面（≥10）：
   * scripts/ 目录缺失也能探测（deps.py marker 不再强制）
   * 同图只解析一次（source sha256 判重命中）
-  * 多算量共享（cad 发布 → 土建/安装读取同一契约）
+  * 多算量共享（cad 发布 → 土建/安装/装饰/园林/钢结构读取同一契约）
   * 降级自身 state（bus 未命中/损坏时不抛错、可回退到本机状态文件）
   * 契约解析、状态原子写、溯源与 CLI 接线
 
@@ -65,7 +65,7 @@ class BusIsolationTest(unittest.TestCase):
         # 模拟 lis-skill-bus 本技能：无 scripts/，只有 SKILL.md
         skill = self._root / "lis-skill-bus"
         skill.mkdir()
-        (skill / "SKILL.md").write_text("---\nname: lis-skill-bus\nversion: 0.1.6\n---\n", encoding="utf-8")
+        (skill / "SKILL.md").write_text("---\nname: lis-skill-bus\nversion: 0.1.9\n---\n", encoding="utf-8")
         info = skillbus.detect_skill(skill)
         self.assertIsNotNone(info)
         self.assertFalse(info["has_scripts"])
@@ -101,7 +101,7 @@ class BusIsolationTest(unittest.TestCase):
     def test_list_skills_uses_root_fallback(self) -> None:
         skill = self._root / "lis-skill-bus"
         skill.mkdir()
-        (skill / "SKILL.md").write_text("---\nname: lis-skill-bus\nversion: 0.1.6\n---\n", encoding="utf-8")
+        (skill / "SKILL.md").write_text("---\nname: lis-skill-bus\nversion: 0.1.9\n---\n", encoding="utf-8")
         rows = skillbus.list_skills(self._root)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["slug"], "lis-skill-bus")
@@ -163,9 +163,10 @@ class BusIsolationTest(unittest.TestCase):
         entry = self._contract(src)
         skillbus.push_project_state("酒店B", entry, building="5#", floor="F1",
                                     source_skill="cad-file-reader")
-        # 土建、安装、装饰、园林都从 bus 拉同一契约（不同专业也共享，不再重复解图）
+        # 土建、安装、装饰、园林、钢结构都从 bus 拉同一契约（不同专业也共享，不再重复解图）
         for prog in ("tujian-suanliang", "anzhuang-suanliang",
-                     "zhuangshi-suanliang", "yuanlin-suanliang"):
+                     "zhuangshi-suanliang", "yuanlin-suanliang",
+                     "gangjiegou-suanliang"):
             got = skillbus.get_project_state("酒店B", "5#", "F1")
             self.assertIn(entry["_id"], got["entries"])
             self.assertEqual(got["entries"][entry["_id"]]["source"]["sha256"],

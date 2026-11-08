@@ -483,6 +483,12 @@ def run_sample_regression(python: Path) -> tuple[dict, int]:
         )
         step["detail"]["scan_rc"] = proc.returncode
         step["detail"]["scan_stderr_tail"] = (proc.stderr or "").strip().splitlines()[-4:]
+        if proc.returncode == 3 and not (SKILL_DIR / "vendor").is_dir():
+            # 轻量包不收 vendor（体积/白名单），样例扫描无法启动属于预期缺失
+            step["ok"] = True
+            step["skipped"] = True
+            step["detail"]["reason"] = "轻量包未随附 vendor，样例扫描跳过（GitHub 完整包保留该回归）"
+            return step, 0
         if proc.returncode != 0 or not detail.is_file():
             step["detail"]["error"] = "cad_scan 样例失败或未产出详情"
             return step, 1

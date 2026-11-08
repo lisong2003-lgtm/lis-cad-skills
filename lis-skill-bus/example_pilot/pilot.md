@@ -6,14 +6,14 @@
 ## 接线顺序（每步完成再下一步）
 1. cad-file-reader：解析完成后 `push_project_state(project=..., entry=cad-contract/v1)`
    - 契约 = `cad-contract/v1`（内含 project_key / producer / source / contract + 置信分层）
-2. 土建算量（shangwu-suanliang）：开工前 `get_project_state(project=...)`
-   - 命中则直接复用候选，不重复读图；未命中降级到本机能读的默认路径
+2. 土建算量（tujian-suanliang）：开工前 `get_project_state(project=...)`
+   - 命中则直接复用候选，不重复读图；未命中表示当前没有可复用契约
 3. bus 记录 `source_skill` 与 `pushed_at`，保证可追溯
 
-## 降级规则
+## 接入方式
 - 有 MCP：`mcp__lis_skill_bus__get_project_state`
-- 无 MCP：`python3 skillbus.py get-project-state --project XXX`（CLI 同样读写同一 state.json）
-- 无 bus：skill 目录自身 `state/` 默认 JSON（功能不丢失，只是不共享）
+- 无 MCP：`python3 skillbus.py get-project-state --project XXX`（同一 bus 包的 CLI，同样读写同一 state.json）
+- 无 bus：正式识图链路停止并提示安装，不由算量技能自行解图
 
 ## 验收
 - [x] cad 解析一次后，土建算量无需再次调用 CAD 解析（pilot_verify.sh 实测命中）

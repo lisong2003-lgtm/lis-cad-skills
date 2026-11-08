@@ -1,0 +1,83 @@
+{
+ "schema": "cad-clash-check/state-v2",
+ "skill": "cad-clash-check",
+ "version": "0.2.0",
+ "status": "done",
+ "old_flow_invalidated": true,
+ "four_dimensions": {
+  "代码": {
+   "done": true,
+   "evidence": [
+    "SPEC_PIPELINE 含 MEP（电气/暖通/给排水）与 building（建筑墙/洞口）入口",
+    "clash_adapt/_kind_of：opening/wall/entity/line/label；equipment/risers→entity；member 带 sheet/floor",
+    "clash_building_extract：结构墙+洞口合并器",
+    "洞口语义：MEP×门窗洞口=opening_pass；墙×洞口=wall_pass；墙×MEP 仍进候选；洞口成员剔除",
+    "find_cfr bug 修复：空 CAD_FILE_READER_HOME 不再误解析为当前目录",
+    "report 字段：sheet/floor/axis/坐标/类型（a_*/b_* 对称）",
+    "construct_plan 模板与 state-v2 schema"
+   ]
+  },
+  "功能": {
+   "done": true,
+   "evidence": [
+    "单元测试 41 项全绿",
+    "施工计划模板输出 *_construct_plan.json/md 链路存在",
+    "state-v2.json schema=cad-clash-check/v2，旧0.1.x产物作废"
+   ]
+  },
+  "实用": {
+   "done": true,
+   "evidence": [
+    "样例项目 MEP 真图 gate：电气102/暖通337/给排水124 设备实体，两两 0 候选（设备无路线段/跨图坐标不同源，诚实标注）",
+    "样例建施真图 gate：G-3#建筑 结构墙 535 段 + J23 改消防 墙 2 段；结构×结构 0 候选",
+    "建筑识图器未产 openings → 洞口链路如实 degraded，不冒充 pass"
+   ],
+   "degraded": [
+    "样例地 openings 不可用：识图器未提取门窗，仅 wall 535/2 段可用",
+    "样例项目 MEP 无 route_segments/系统管路，跨图 0 候选不代表排除全部实物碰撞"
+   ]
+  },
+  "目标": {
+   "done": true,
+   "evidence": [
+    "s7 verify 满足：SPEC_PIPELINE 指定管线在；单测全绿；两组真图验收 JSON/MD 存在且可回放（work/run_s7.py mep/building）"
+   ],
+   "not_done": []
+  }
+ },
+ "acceptance": [
+  {
+   "name": "样例项目 MEP 验收",
+   "type": "gate",
+   "ok": true,
+   "files": [
+    "outputs/clash/mep-gate.json",
+    "outputs/clash/mep-gate.md"
+   ],
+   "details": "电气E-10#/暖通M-3#/给排水P-3# 设备实体，两两 0 候选，跨图坐标不同源如实说明"
+  },
+  {
+   "name": "样例建施验收",
+   "type": "gate",
+   "ok": true,
+   "files": [
+    "outputs/clash/building-gate.json",
+    "outputs/clash/building-gate.md"
+   ],
+   "details": "G-3#建筑 535 墙 + J23改消防 2 墙，结构×结构 0 候选；openings 未提取，如实 degraded"
+  }
+ ],
+ "tests": {
+  "total": 41,
+  "result": "tests result line: .........................................\n----------------------------------------------------------------------\nRan 41 tests in 0.003s\n\nOK",
+  "command": "cd <skills-root>/cad-clash-check/scripts && python3 -m unittest discover -s tests"
+ },
+ "replay": {
+  "driver": "<workspace-root>/2026-10-31/skill-100-100-step-7-clash/work/run_s7.py",
+  "commands": [
+   "python3 work/run_s7.py mep",
+   "python3 work/run_s7.py building"
+  ]
+ },
+ "boundary": "2D图面候选提示，非BIM；跨图坐标需同源；公司图纸不上云；识图器缺 openings/wall 时如实 degraded，不冒充 pass"
+}

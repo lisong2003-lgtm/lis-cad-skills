@@ -118,7 +118,7 @@ def component_candidates(records: list[dict[str, Any]], rules: dict[str, Any]) -
         if not category:
             continue
         # 系统名先看**本图文字**，只有文字认不出时才退回构件规则带的系统。
-        # 原来直接用构件规则的系统，实测经十一路室外管网图里「给水」「雨水」「中水」
+        # 原来直接用构件规则的系统，实测sample-road室外管网图里「给水」「雨水」「中水」
         # 全落在 DIM_污水 图层上，于是被统统标成 sewage——按系统统计管线数量时
         # 给水和污水会混成一笔账，这正是「快速提取想要的数据」最不能忍的错。
         system, system_rule, _sys_pattern = match_rule(rec["text"], system_rules, "system")

@@ -1,18 +1,18 @@
-# lis-skill-bus v0.1.6
+# lis-skill-bus v0.1.10
 
 本地 Skill 联动总线：**Skill 管专业算法，bus 管项目状态与契约**。
-纯 Python stdlib、不联网、跨平台；CLI 与 MCP 双模式，下载即用、可降级。
+纯 Python stdlib、不联网、跨平台；CLI 与 MCP 双模式，是正式识图链路的必需契约桥。
 
 ## 装上有什么好处（给用户看）
-- **同一张图只解析一次**：cad-file-reader 解析完写契约，土建/安装/装饰/园林直接复用候选，不重复解图；
-- **5 技能共享**：同一把项目 key，状态与契约通用，断点接续；
+- **同一张图只解析一次**：cad-file-reader 解析完写契约，土建/安装/装饰/园林/钢结构直接复用候选，不重复解图；
+- **6 技能共享**：同一把项目 key，状态与契约通用，断点接续；
 - **完全本地**：纯 stdlib、不联网，公司数据只落本机；
-- **不装也能用**：bus 缺失时自动降级到各技能自带 state，先跑通工作流，装好无缝读取；
+- **正式识图必须安装**：链路固定为 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> 算量技能`；bus 缺失时停止正式识图并提示安装，不允许算量技能自行解图；
 - **一行安装**：`bash install_skillbus.sh --apply`（Windows GitHub 完整包：`install_skillbus.cmd --apply`，SkillHub 版用 `python install_py.py --apply`；只注册复制不留注册：`SKIP_MCP_REG=1 bash install_skillbus.sh --apply`）。
 详细话术见 `BENEFITS.md`。
 
 ## 目录
-- `skillbus.py`             MCP stdio server + CLI 降级入口（含 detect-skill / find-contract）
+- `skillbus.py`             MCP stdio server + CLI 入口（含 detect-skill / find-contract）
 - `schemas/cad-contract-v1.schema.json`  统一联动契约（复用 cad-file-reader/v0 + qto-project/v1）
 - `install_skillbus.sh`     安装/回滚脚本（--dry-run / --apply / --uninstall，macOS/Linux）
 - `install_skillbus.cmd`    Windows 安装壳（调 install_py.py，纯静态校验通过）
@@ -22,7 +22,7 @@
 - `SKILL.md`                平台发布用最小安装器说明（非业务技能）
 - `BENEFITS.md`             引导好处文案
 - `mcp-config.example.json` Claude Desktop / Cursor / 其他 stdio 客户端注册样例
-- `integration/`            cad-file-reader 发布契约 / 土建算量拉取契约的接线脚本与试点验收
+- `integration/`            cad-file-reader 发布契约 / 土建、安装、装饰、园林、钢结构算量拉取契约的接线脚本与验收
 - `example_pilot/`          cad-file-reader → 土建算量链路示例（示例项目，非真实工程）
 
 ## 4 个能力
@@ -45,22 +45,23 @@
   ③ `$HOME/.codex/skills/lis-skill-bus/skillbus_client.py` 与 `$HOME/.codex/skills/.skillbus/skillbus_client.py`
   ④ 常见本机开发/临时副本目录（临时工作区/开发副本）——先正式，仅正式缺失才回退
 - 命中 dev/临时副本时，statesync 在 stderr 输出告警行：`bus 命中来源：<路径>（临时副本/dev，非正式安装）`；正式命中输出 `（正式安装）`。
-- 找不到 bus（含 `SKILLBUS_DISABLE=1`）不报错：直接写 `$HOME/.codex/skills/.skillbus/state.json`（可用 `SKILLBUS_STATE_DIR` 改位置），与 bus state.json 同构，后续装 bus 可无缝读取。
+- `SKILLBUS_DISABLE=1` 只用于隔离测试。正式识图链路不得用 `SKILLBUS_DISABLE=1` 绕过 bus；算量技能缺少 bus 时应停止正式识图并提示安装，或者只消费已经由正式链路生成并留存的契约。
 
 ## 当前边界（骨架版）
 - MCP 用行分隔 JSON-RPC，满足 initialize / tools/list / tools/call；未实现 resources/notifications 全集
 - 契约 catalog 只收录 `cad-file-reader/v0` 与 `qto-project/v1` 元数据；详细 schema 以完整包为准
 - 接线规范见 example_pilot/pilot.md；接线脚本见 integration/
-- 已完成 cad-file-reader、土建(shangwu)、安装、装饰、园林 5 个 skill 的 SKILL.md「lis-skill-bus 可选联动（试点，不强制）」段
+- 已完成 cad-file-reader、土建、安装、装饰、园林、钢结构 6 个 skill 的 bus 接线段；钢结构的正式链路已收紧为必需 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`。
 
-## 试点状态（2026-10-21）
-- ✅ 已真实接入两份 SKILL.md（cad-file-reader、tujian-suanliang/shangwu）各加“lis-skill-bus 可选联动（试点，不强制）”段，含发布/拉取/降级说明；原文件备份在 `work/backup_*_SKILL.md`。
+## 接线验证状态
+- ✅ cad-file-reader 与 tujian-suanliang 已完成真实接线与契约发布/拉取验证；原文件备份在 `work/backup_*_SKILL.md`。
 - ✅ `integration/pilot_verify.sh` 通过：cad 发布 `cad-contract/v1` → 土建拉取命中 → 契约 schema/候选校验 OK（免重复解图）。
-- ⏳ 未做：Windows `.cmd` 接线、真实 `cad_scan` 产出的对接 hook、平台发布变更。
+- ✅ Windows `.cmd` 接线、真实 `cad_scan` 产出的对接 hook 与平台发布变更已完成静态或本机验证。
 - ✅ 已完成安装/装饰/园林 3 个 skill 扩展（SKILL.md 接线段 + scripts/*_statesync.{py,sh} + integration/*_{pull,publish}_contract.sh；字段命中检查通过）。
+- ✅ 已完成钢结构（gangjiegou-suanliang）v0.2.1 接线，补齐 `.cmd`，`members`/`sections` 为核心 section。
 
 ## Windows 接线验收（2026-10-22）
-- 新增 `skillbus_client.cmd`、`install_skillbus.cmd`（--dry-run/--apply/--uninstall）、`install_py.py`、`integration/*_contract.cmd`（8 个）与五件套 `scripts/*_statesync.cmd`。
+- 新增 `skillbus_client.cmd`、`install_skillbus.cmd`（--dry-run/--apply/--uninstall）、`install_py.py`、`integration/*_contract.cmd`（10 个）与五件套 `scripts/*_statesync.cmd`。
 - **Windows 未实机跑通，仅静态校验通过**（CRLF 行尾、无 /Users 或 /bin/sh 硬编码、py 启动器 + %PYTHON%/%CODEX_PYTHON% 回退、默认路径用 %USERPROFILE%\.codex）。
 - lint_cross_platform.py 无新增 ERROR；建议在真实 Windows/虚拟机复测各 `.cmd` 的 --help/--dry-run 冒烟。
 

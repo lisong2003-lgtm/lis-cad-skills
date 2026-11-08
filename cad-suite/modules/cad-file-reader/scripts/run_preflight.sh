@@ -41,9 +41,14 @@ echo "=== 3/4 发布脱敏扫描 ==="
 echo "=== 3.5/4 SkillHub 合规扫描 ==="
 CHECK_RELEASE="${HOME}/.codex/skills/skill-publisher/scripts/check_release.py"
 if [[ -f "${CHECK_RELEASE}" ]]; then
-  # outputs/examples 为本地/示例目录不随发布包上传；plants.json 里的 中国/美国/台湾/新疆/香港 是植物品种地理名，非政治涉政。
+  # 数据词豁免表放在 rules/release-sensitive.allow（植物品种地理名，非涉政内容）。
+  ALLOW_FILE="${SKILL_DIR}/rules/release-sensitive.allow"
+  ALLOW_SENSITIVE=""
+  if [[ -f "${ALLOW_FILE}" ]]; then
+    ALLOW_SENSITIVE="$(tr '\n' ',' < "${ALLOW_FILE}" | sed 's/,$//')"
+  fi
   "${PYTHON_BIN}" "${CHECK_RELEASE}" --path "${SKILL_DIR}" --exclude-dirs outputs,examples \
-    --allow-sensitive 'packs/landscape-geometry/rules/plants.json=中国,packs/landscape-geometry/rules/plants.json=美国,packs/landscape-geometry/rules/plants.json=台湾,packs/landscape-geometry/rules/plants.json=新疆,packs/landscape-geometry/rules/plants.json=香港,scripts/run_preflight.sh=中国,scripts/run_preflight.sh=美国,scripts/run_preflight.sh=台湾,scripts/run_preflight.sh=新疆,scripts/run_preflight.sh=香港,scripts/run_preflight.sh=政治'
+    --allow-sensitive "${ALLOW_SENSITIVE}"
 else
   echo "⚠️ 未找到 skill-publisher/check_release.py，跳过 SkillHub 合规扫描（发布前需补跑）"
 fi

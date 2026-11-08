@@ -1,9 +1,11 @@
-## 0.9.30 · 2026-11-03
-
-- Added English-first metadata and README surface for the tri-platform package.
-- Kept local parsing and quantity algorithms unchanged.
-
 # Changelog
+
+## 0.9.32 · 2026-11-08 · 技能层瘦身与发布完整性
+
+- **SKILL.md 瘦身**：16,961 B → 10,035 B（-40.8%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。
+- **发布完整性**：被引用文件随包存在、Python/bash/JSON 语法通过、技能自检 PASS；未实现的检查如实记 SKIP。
+- **脱敏**：本机路径、真实项目名与公司资料引用替换为通用示例；平台专用入口只改发布副本。
+
 
 ## 0.9.28
 
@@ -20,7 +22,7 @@
 
 - **授权与保留** 新增「授权与保留」段落：作者 lis 声明本技能可商用/可再分发/可对外授权，商用前按双许可说明确认是否需联系作者申报。
 - **脱敏（发布合规）** rules 中的公司内部来源字段由「公司知识库/…/规范图集」改为「公开规范与行业通用做法整理」，不再引用公司内部资料路径。
-- **版本对齐** 本机 `<skills-root>`、`<workbuddy-skills-root>` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
+- **版本对齐** 本机 `$CODEX_SKILLS_DIR/skills`、`~/.workbuddy/skills` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
 
 ## 0.9.24
 
@@ -30,7 +32,7 @@
 - **新增** `requirements.txt`（含可选的 `markitdown`，用于读 Word/Excel/PDF 依据）、Windows 启动器 `decor_qty.cmd` / `cad_measure_to_input.cmd` / `zhuangshi_statesync.cmd`。
 - **文档** 标题版本由 v0.9.0 更正为 v0.9.24；命令统一改为 `bash scripts/*.sh`。
 - **修复（发布兼容）** `cad_measure_to_input.py` 调用 `cad_validate.sh` 改为 `bash` 启动；`ensure_base.sh` / `setup.sh` 内部调用同步改 `bash`。
-- **修复（跨 Agent）** `cad_measure_to_input.py` 底座探测增加同级目录与 `<workbuddy-skills-root>/*`。
+- **修复（跨 Agent）** `cad_measure_to_input.py` 底座探测增加同级目录与 `~/.workbuddy/skills/*`。
 
 ## 0.9.23 (2026-10-23)
 - 修复 SkillHub 版 Windows 无 `.cmd` 时的接线说明：改为 `python scripts/*_statesync.py` 等价调用（bus 安装用 `python install_py.py --apply`）；GitHub 完整包保留 `.cmd`。平台发布调整，算法/契约/口径不变。

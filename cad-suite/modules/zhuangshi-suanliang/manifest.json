@@ -1,6 +1,6 @@
 {
   "name": "zhuangshi-suanliang",
-  "version": "0.9.29",
+  "version": "0.9.32",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -9,8 +9,10 @@
     "python": ">=3.10"
   },
   "scripts": [
+    "scripts/cad_measure_to_input.cmd",
     "scripts/cad_measure_to_input.py",
     "scripts/cad_measure_to_input.sh",
+    "scripts/decor_qty.cmd",
     "scripts/decor_qty.py",
     "scripts/decor_qty.sh",
     "scripts/ensure_base.sh",
@@ -21,15 +23,21 @@
     "scripts/self_test.py",
     "scripts/setup.sh",
     "scripts/smoke_utf8_json.py",
-    "scripts/tests/test_decor_qty.py",
     "scripts/zhuangshi_statesync.py",
-    "scripts/zhuangshi_statesync.sh"
+    "scripts/zhuangshi_statesync.sh",
+    "scripts/zhuangshi_statesync.cmd"
   ],
   "references": [
+    ".gitignore",
     "CHANGELOG.md",
     "LICENSE.md",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "docs/history.md",
+    "docs/bus-integration.md",
+    "docs/integration.md",
+    "docs/runtime.md",
+    "docs/README.md"
   ],
   "rules": [
     "rules/国家规范要求.json",
@@ -45,8 +53,7 @@
     "templates/项目专属规则示例.json"
   ],
   "tests": [
-    "scripts/self_test.py",
-    "scripts/tests/test_decor_qty.py"
+    "scripts/self_test.py"
   ],
   "privacy": "本机运行；脚本只处理用户提供的文件，不联网，不上传图纸或项目资料。",
   "notes": "计划口径估算，不替代清单计价、竣工结算或下料单。",

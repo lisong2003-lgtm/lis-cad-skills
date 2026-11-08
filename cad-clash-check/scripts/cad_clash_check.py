@@ -164,7 +164,7 @@ def _axis_networks_from_data(data: dict, cfr: Path | None = None):
         return nets, {"networks": len(nets), "usable": usable,
                       "degraded": len(nets) - usable,
                       "status": "available" if usable else ("degraded" if nets else "missing")}
-    # P1 只更新了 <codex-home> 副本；find_cfr 可能先命中未同步的 ~/.workbuddy 旧副本，
+    # P1 只更新了 $CODEX_SKILLS_DIR 副本；find_cfr 可能先命中未同步的 ~/.workbuddy 旧副本，
     # 因此薄层轴网优先定位带 cad_axis_networks.py 的 cad-file-reader/scripts。
     candidates: list[Path] = []
     if cfr is not None:

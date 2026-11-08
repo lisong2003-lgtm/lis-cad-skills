@@ -47,9 +47,9 @@ pip_fallback() {
     return 1
   fi
   "$PYTHON_BIN" -m pip install --disable-pip-version-check --no-input --quiet --target "$_DEST" \
-    "ezdwg==0.12.6" "ezdxf==1.4.4" fonttools pyparsing numpy || return 1
+    "ezdwg==0.12.6" "ezdxf==1.4.4" fonttools pyparsing numpy typing_extensions || return 1
   if _unpacked_ok; then
-    echo "vendor 已安装到 $_DEST（公共 PyPI）"
+    echo "vendor 已安装到 ${_DEST}（公共 PyPI）"
     return 0
   fi
   echo "vendor 安装后校验未通过，请手动检查：$_DEST" >&2
@@ -131,7 +131,7 @@ install_via_release() {
     if [ -d "$DEST" ]; then find "$DEST" -depth -delete; fi
     SRC="$(find "$TMP" -type d -name vendor -print -quit)"
     cp -R "$SRC" "$DEST"
-    echo "vendor 已安装到 $DEST（Release $INSTALLED_V）"
+    echo "vendor 已安装到 ${DEST}（Release ${INSTALLED_V}）"
     echo "许可证与第三方依赖清单见 NOTICE.md（MIT/BSD）"
     return 0
   fi

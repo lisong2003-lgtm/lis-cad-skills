@@ -1,15 +1,15 @@
 ---
 name: yuanlin-suanliang
 slug: yuanlin-suanliang
-displayName: Landscape Plants & Pavement Review Ledger
-version: 0.4.34
+displayName: 园林算量 · 苗木统计与铺装面积
+version: 0.4.36
 platforms: [macos, windows, linux]
-locale: en-US
-locales: [en-US, zh-CN]
-localeScope: 面向建筑工程与园林景观图纸；规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表按中文/本地场景设计，其他语言可通过 --plant-library 传入项目词库扩展。
+locale: zh-CN
+locales: [zh-CN, en-US]
+localeScope: 面向中文建筑工程与园林景观图纸；规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表按中文/本地场景设计，其他语言可通过 --plant-library 传入项目词库扩展。
 author: lis
 license: CC-BY-NC-SA-4.0
-description: Classifies plant legends, parses plant-table baselines and computes pavement area from closed regions using cad-file-reader landscape candidates. Outputs review-ready landscape budget and material-plan drafts with P0-P3 confidence tiers and evidence coordinates.
+description: "园林算量：按中英文图例统计苗木、解析苗木表设计基线、按闭合区域算铺装面积，可展开 DXF 块内铺装；输出带使用边界、P0–P3 置信分层和证据坐标的概算底稿与物资计划草稿。不替代设计复核/放线/点树/结算。"
 i18n:
   en: README.en.md
   zh: README.md
@@ -18,18 +18,17 @@ i18n:
 # 园林算量 v0.4.27
 
 ## 识图契约红线（硬规则，禁止绕行）
-- 算量技能**不得单独识别 DWG/DXF/PDF**：识图必须由 `cad-file-reader` 完成一次，产出统一契约后各算量技能共享复用（同一张图只解析一次）。
-- **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
-- 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
-- `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
-- **DWG 解码兜底只能在 cad-file-reader 内完成**：遇到 ezdwg/libredwg 读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3#），由 cad-file-reader 用独立 `ODAFileConverter` 在副本上转 DXF 复扫并回读校验；本技能**不得自行调用 CAD/看图 App/ODAFileConverter 解图**，只消费底座给出的契约 JSON。
 
-
-> **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
+- 算量技能**不得单独识别 DWG/DXF/PDF**：识图只能由 `cad-file-reader` 做一次，产出统一契约后各技能共享复用。
+- **禁止自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 解图**；底座缺失如实标 `unavailable`，不得降级成「自己解图」。
+- 算量入口默认拒绝直接 DWG，只有开发/回归调试可用 `CAD_ALLOW_DIRECT=1` 逃生；算量结果必须带契约来源（图号/坐标证据）。
+- `lis-skill-bus` 是契约与算量技能之间的唯一定接线。
+- DWG 解码兜底（ezdwg 读不了的 ACAD 新变体/损坏卷）只能在底座内用 `ODAFileConverter` 在副本上转 DXF 复扫校验；本技能不得调用 CAD/看图 App/ODAFileConverter。
+- 内存双档：默认 `CAD_MEM_LIMIT_MB=4096`；仅实测超 4GB 真实大图且串行跑时临时 8192，不改全局默认；mem_guard 只终止识图子进程。
 
 ## 语言与区域范围
 
-本技能面向**建筑工程与园林景观图纸**：规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表（如西北温带荒漠区植物等）明确按中文/本地场景设计。如需其他语言/区域，可通过 `--plant-library` 传入项目词库扩展，不改算法与口径。
+本技能面向**中文建筑工程与园林景观图纸**：规则、植物词库与输出证据默认使用简体中文，并对常见英文图例做别名兼容；地域性词表（如西北温带荒漠区植物等）明确按中文/本地场景设计。如需其他语言/区域，可通过 `--plant-library` 传入项目词库扩展，不改算法与口径。
 
 **它解决的一件事**：把 `cad-file-reader` 的园林识图候选复算成可复核的苗木统计与铺装面积概算底稿，并明确区分“苗木表设计给定数量”“有坐标的块级实例计数”“无坐标块实例计数”“块引用总数候选”“图例文字标记次数”“铺装强算候选”等口径。
 
@@ -42,24 +41,14 @@ i18n:
 - 真图边界验证：图层名/块名缺失的转换版 DWG，不硬出铺装面积；强算结果只标 P3 候选。
 
 ## 前置（显式依赖）
-## 强依赖底座说明（cad-file-reader 强依赖，不做弱化）
+## 强依赖底座（cad-file-reader，不做弱化）
 
-本技能采用**识图与算量分离**的固定架构，`cad-file-reader` 是**强依赖底座**，不是可选增强：
+`cad-file-reader` 是强依赖底座，不是可选增强：DWG/DXF/DWT/PDF 解析、图层/文字/块/图框/几何与测量候选全部由底座完成，一次解图全项目复用；本技能只做园林专业口径的量算与台账，不重复解析图纸。底座输出候选（`final_quantity=false`），本技能输出概算底稿/物资计划草稿。缺底座或版本不足必须明确报错，不静默用错数据。
 
-- **为什么必须强依赖**：DWG/DXF/DWT/PDF 的解析、图层/文字/块/图框/几何提取、识图候选和测量候选全部集中在底座完成，一次解图、全项目复用，保证证据坐标与契约一致。本技能只做本专业口径的量算、扣减、损耗、分账和台账，不重复解析图纸。
-- **分工**：底座输出 `final_quantity=false` 的识图/测量候选；本技能输出本专业概算底稿/物资计划草稿（`final_quantity=true` 仅本专业口径）。
-- **版本约束**：底座最低版本以各技能 `SKILL.md`「前置/依赖」写的 `>=x.y.z` 为准；缺底座或版本不够时明确报错，不静默用错误数据。
-- **安装**：先装底座（`cad-file-reader` 的 `scripts/setup.sh`），再装本技能；运行时底座可在 `SKILL_NO_BASE=1` 下退化为只读已有扫描/候选/表格输入，但精度受限并必须在结果标注。
-- **联动**：装有 lis-skill-bus 时，底座与各算量技能通过 `cad-contract/v1` 共享契约，同一张图只解一次；不装 bus 时各技能自动降级为各自 `state/`，功能不丢失。
-
-
-- 底座 `cad-file-reader >= 0.28.1` 的 `landscape-geometry` 包是**显式依赖**；不自行解析大 DWG。
-- 苗木统计输入：底座 `cad_landscape_geometry` 输出 JSON（`plant_block_legends` / `plant_legends` / `plant_schedule_links` / `systems`）与 `cad_scan` 文字/块引用详情。
-- 苗木表解析：从图纸文字中识别“苗木表/苗木配置表”的表头、名称、数量、单位列；数量单位必须来自数量表头括号或单位列，缺失时不默认为株并降 P1。
-- 铺装面积输入：`cad_scan --with-geom --with-geom-layer --detail-json` 详情 JSON；应有可用的铺装图层名。
-- DXF 块内铺装回退：可选 `--dxf-block-paving`，使用底座 `vendor/ezdxf` 展开 INSERT 变换；只提取命中铺装 token 的闭合 `LWPOLYLINE/POLYLINE/HATCH/ARC`，展开 LWPOLYLINE bulge 圆弧，结果强制 P3。
-- DXF 块引用坐标回退：可选 `--dxf-block-refs`，读取模型空间顶层 INSERT 坐标，同名块按坐标去重；只有坐标命中的块引用才升级 P0，无坐标仍保持 P2。
-- 扫描件/图片型 PDF 只出苗木文字候选，不给铺装面积。
+- 输入契约：苗木统计吃底座 `cad_landscape_geometry` 的 `plant_block_legends`/`plant_legends`/`plant_schedule_links`/`systems` 与 `cad_scan` 文字/块引用详情；铺装面积吃 `cad_scan --with-geom --with-geom-layer --detail-json` 详情。
+- 苗木表数量单位必须来自数量表头括号或单位列，缺失时不默认"株"并降 P1；扫描件/图片型 PDF 只出苗木文字候选，不给铺装面积。
+- DXF 回退：`--dxf-block-paving` 只提命中铺装 token 的闭合环、结果强制 P3；`--dxf-block-refs` 只按顶层 INSERT 坐标去重，无坐标仍 P2。
+- 装 `lis-skill-bus` 时按 `cad-contract/v1` 共享契约，否则降级到各自 `state/`；完整输入契约与安装/降级细节见 `references/base-contract.md`。
 
 ## 使用流程
 
@@ -71,54 +60,14 @@ i18n:
 ## 脚本用法
 
 ```bash
-# 1) 底座：园林识图（苗木图例/块分类/铺装闭合域候选）
-scripts/cad_scan.sh 景观图.dwg --with-mtext --with-attrib --with-insert --with-blocks --with-block-geom \
-  --with-geom --with-geom-layer --detail-json 景观详情.json --format json -o 景观扫描
-scripts/cad_landscape_geometry.sh 景观详情.json --out-dir 园林识图
-
-# 2) 本技能：苗木统计 + 铺装面积
-bash scripts/yuanlin_qty.sh \
-  --landscape 园林识图/景观详情.landscape.json \
-  --scan 景观详情.json \
-  --out-dir ./园林概算 \
-  --project "项目名"
-
-# 3) 可选：DXF 图块内铺装回退（仍强制 P3）
-bash scripts/yuanlin_qty.sh \
-  --landscape 园林识图/景观详情.landscape.json \
-  --scan 景观详情.json \
-  --dxf-block-paving 景观图.dxf \
-  --out-dir ./园林概算-块铺装候选 \
-  --project "项目名"
-
-# 4) 可选：DXF 顶层块引用坐标去重（P2→P0；同名坐标重复不计）
-bash scripts/yuanlin_qty.sh \
-  --landscape 园林识图/景观详情.landscape.json \
-  --scan 景观详情.json \
-  --dxf-block-refs 景观图.dxf \
-  --out-dir ./园林概算-块坐标 \
-  --project "项目名"
-
-# 5) 可选：叠加项目植物名称参考库（只取中文名→大类）
-bash scripts/yuanlin_qty.sh \
-  --landscape 园林识图/景观详情.landscape.json \
-  --scan 景观详情.json \
-  --plant-library 项目苗木清单.xlsx \
-  --out-dir ./园林概算-项目词库 \
-  --project "项目名"
+bash scripts/yuanlin_qty.sh --landscape 园林识图/景观详情.landscape.json --scan 景观详情.json --out-dir ./园林概算 --project "项目名"
 ```
 
-可用参数：
-
-- `--rules templates/项目专属规则示例.json`：项目专属图层 token、植物词库、去重半径。
-- `--scale 100` / `--drawing-mm-per-unit 1`：覆盖自动比例/单位检测；显式指定后不回改单位。
-- `--dedupe-tolerance 0.5`：同名块同坐标去重半径（图纸单位）。
-- `--paving-all-geometry`：图层缺失时对全部几何做闭环候选；结果强制 P3、`final_quantity=false`，不计入主线。
-- `--dxf-block-paving 图.dxf`：可选回退，展开块内铺装闭合环；结果强制 P3、不计入主线。
-- `--dxf-block-refs 图.dxf`：可选回退，读取顶层 INSERT 坐标，同名块按坐标去重；无坐标块引用仍保持 P2，不猜株数。
-- `--plant-library 参考库.{json,csv,xlsx}`：可选叠加项目植物名称参考库；**只读中文名与分类章节**，规格/密度/苗价/综合单价等列一律不读、不写进输出；可重复指定。
-- `--no-default-plant-library`：不加载全部内置区域库（`rules/plant_library_*.json`，默认全部加载）；只影响分类，不影响数量口径。
-- 块引用 P2：底座 `meta.block_refs` 中只有总数、没有坐标的植物块引用，只作复核线索，`final_quantity=false`。
+- `--rules <json>` 项目专属图层 token/词库/去重半径；`--scale` / `--drawing-mm-per-unit` 覆盖自动比例与单位（显式指定后不回改）。
+- `--paving-all-geometry`（图层缺失时全几何闭环候选）与 `--dxf-block-paving`（DXF 块内铺装回退）结果强制 P3、`final_quantity=false`、不计主线。
+- `--dxf-block-refs` 读顶层 INSERT 坐标按同名去重；`--plant-library` 只读中文名与分类章节，规格/密度/苗价一律不读；`--no-default-plant-library` 关内置区域库（只影响分类不影响数量）。
+- 块引用 P2：只有总数、没有坐标的植物块引用只作复核线索，`final_quantity=false`。
+- 底座识图命令、四组完整示例与参数全表见 `references/usage.md`。
 
 ## 输出
 
@@ -145,14 +94,7 @@ bash scripts/yuanlin_qty.sh \
 
 ## 植物名称参考库（v0.4.13）
 
-- 内置库 `rules/plant_library_常用园林植物.json`：349 个中文名 → 乔木/灌木/地被/其他，来源为《常用园林植物品种规格及价格清单》的**名称与分类章节**（不含规格、密度、价格）。
-- 内置区域/素材库：`rules/plant_library_*.json` 全部默认加载（按文件名稳定排序，先加载者优先）；当前含 `plant_library_常用园林植物.json`（349 名）、`plant_library_西北温带荒漠区.json`（112 名 / 131 条别名）、`plant_library_园林景观CAD图块素材.json`（311 名）与 `plant_library_分区苗木选型.json`（8 个气候区 1022 名 / 去别名后新增约 700 名）。
-- 图块素材库只取《园林景观CAD图块》单个树图块的 DWG 文件名，并按乔木/灌木/地被/其他归大类；不读取块内几何作规格推断，不改变数量口径。
-- 项目库：`--plant-library 文件.{json,csv,xlsx}`，xlsx 只按“中文名称”列 + 章节行识别；`.json` 支持 `names`/`categories`/`plants` 三种结构；`.csv` 支持 中文名称+分类/类别 或 名称+章节。
-- 章节→大类顺序（顺序敏感）：地被（小灌木及地被 / 水生 / 草坪 / 地被 / 草花）→ 灌木（球类灌木 / 大灌木 / 灌木）→ 乔木（常绿乔木 / 落叶乔木 / 乔木）→ 其他（藤本 / 竹类）；避免“小灌木及地被”被误判成灌木。
-- 保守口径：参考库**只补原词库缺口**；内建/项目词库已覆盖的名称保持原分类，因此不改变既有主线结果。
-- 命中记录：`园林苗木统计.csv` 的 `参考库命中` 列（格式 `大类:名称`）与 `分类依据`；汇总输出 `植物名称参考库条目数`、`参考库命中分类条数`。
-- 硬边界：参考库**不含也不读规格、标号、单价**；不据此自动推断规格或报价，不进入任何金额计算。
+内置 `rules/plant_library_*.json` 全部默认加载（常用园林植物 349 名、西北温带荒漠区 112 名/131 条别名、CAD 图块素材 311 名、分区苗木选型 8 气候区 1022 名）；项目库用 `--plant-library 文件.{json,csv,xlsx}`；章节→大类顺序：地被→灌木→乔木→其他；参考库**只补原词库缺口**，不改变既有主线路结果，**不含也不读规格/标号/单价**。命中写入 `参考库命中`/`分类依据` 列。完整条目与结构见 `references/plant-library.md`。
 
 ## 铺装面积口径
 
@@ -189,17 +131,9 @@ bash scripts/yuanlin_qty.sh \
 8. 不自动把公司数据上传云端，不联网解析图纸。
 9. 输出只作概算底稿与物资计划草稿，不作为结算、对量、竣工计量或正式报价依据。
 
-## 真图回归结论（2026-10-14）
+## 回归记录
 
-- 公司转换版：经十一路安置区景观施工图 `_t3` 边界。
-  - `02种植总图+苗木表_t3.dwg`：苗木表 54 条、株数基线 1792；图例/种植文字 P2 15 类/115 次；因图层空、块名空，平面逐株计数不可用。
-  - `04铺装详图一_t3.dwg`：默认不硬出面积；强算 403 条 P3 候选、合计 235976.5657 m²，不计主线。v0.2.0 的 561 条/85374.0195 m² 差异来自伪环过滤与“候选环面积合计”口径修正，不是同一口径直接比较。
-  - `01总图部分_t3.dwg`、`绿化样本图.dwg`、`绿化设计说明.dwg`：主线 0，降级正确。
-- 公开 DXF：
-  - riveryard：13 类植物；P0/P1 主线 7 株；P2 块引用 6 类/12 次；DXF 块内铺装 P3 候选 2.52 m²，主线 0。
-  - clifftop：40 类植物；P0/P1 主线 34 株；P2 块引用 15 类/46 次；P2 文字 6 类/6 次；铺装未命中，主线 0。
-  - drone、greenplan_demo、green-atlas-site、green-atlas-closed-loop、Synovia：主线 0，负向控制通过。
-  - 公开样例只作本机回归，不随技能分发；clifftop 许可为 CC-BY-NC-SA 4.0，riveryard 未声明许可证。公司图纸不上云。
+真图回归结论与已知边界见 `docs/history.md`；置信分层和证据坐标规则仍以本文件为准。
 
 ## 依赖与降级
 
@@ -209,48 +143,21 @@ bash scripts/yuanlin_qty.sh \
 - `ezdxf` 仅用于可选 DXF 块内铺装回退；底座 `vendor/ezdxf` 已提供，未安装时该回退不可用，不影响主线。
 - 无 `openpyxl`：仍输出 CSV/Markdown，台账 xlsx 跳过。
 
-## lis-skill-bus 可选联动（试点，不强制）
+## lis-skill-bus 联动
 
-- 状态过滤：项目名/楼栋/楼层一致时，本技能可与 `cad-file-reader` 及其它算量 skill 通过 lis-skill-bus 交换 `cad-contract/v1`；命中即复用，不再重复解图。
-- 拉取（开工前，推荐）：`scripts/yuanlin_statesync.sh pull --project 项目 [--building 楼栋] [--floor 楼层] [--out 落盘.json]`
-  —— 命中且契约含本专业 section 字段（`plant_legends`、`plant_block_legends`、`plant_schedule_links`、`paving_closed_areas`、`green_area_candidates`、`hardscape`）时返回 `hit=true usable=true`，可直接复用；未命中/缺字段/无 bus 一律返回 `hit=false`/`usable=false`，走本技能正常解析。
-- 发布（算量落盘后，可选）：`scripts/yuanlin_statesync.sh push --entry-file <本技能输出.json> --project 项目 [--building 楼栋] [--floor 楼层] [--specialty 园林]`，自动包装成 `cad-contract/v1` 后入 bus。
-- 对应接线脚本：`lis-skill-bus/integration/yuanlin_pull_contract.sh` / `yuanlin_publish_contract.sh`（薄壳，等价调用本技能 statesync）。
-- 命中口径：`usable=true` 为本机状态里的「候选级命中」（`candidate_only=true`）；命中 section 内若有 `review_required`/P2/P3 项，statesync 只标 `review_flagged`，P0–P3 与复核项过滤仍在本技能算量核心按既有口径完成，不因 bus 命中而跳过滤。
-- 命中开关（默认宽松）：默认仍为「至少一个 section 字段命中即 `usable=true`」的候选级命中；加 `--require-core` 后收紧为必选核心 section 至少一个命中且非空（园林=`plant_schedule_links` 苗木表 / `paving_closed_areas` 铺装），缺核心时 `usable=false` 并把缺项写入 `review_flagged`。是否把默认改为收紧属业务口径，待用户/业务确认。
-- bus 路径变更：仅需设置 `SKILLBUS_HOME` 指向新 bus 目录，本技能任何文件无需改动。
-- 兼容/降级：客户端按如下优先级定位 `skillbus_client.py`，正式路径存在时不回退 dev 副本：
-① `SKILLBUS_HOME`（bus 目录）或 `SKILLBUS_CLIENT`（直接指向 client 文件）显式指定
-② `$HOME/.codex/mcp_servers/lis-skill-bus/skillbus_client.py`（正式安装落点）
-③ `$HOME/.codex/skills/lis-skill-bus/skillbus_client.py` / `$HOME/.codex/skills/.skillbus/skillbus_client.py`
-④ 常见本机开发副本（`tan/work` 等，最后才回退）。
-命中 dev/临时副本时 stderr 会输出告警行「bus 命中来源：<路径>（临时副本/dev，非正式安装）」，正式路径输出「（正式安装）」；找不到 bus 时不报错，直接写 `$HOME/.codex/skills/.skillbus/state.json`（与 bus 同构，后续装 bus 可无缝读取）。 无 MCP/无 bus 不影响任何算量能力；本技能算法、口径、扣减、损耗、分账与台账逻辑不变。
+- 算量链必须安装并先查 bus；命中 `cad-contract/v1` 后直接复用，不重复解图。
+- 园林核心 section 为 `plant_schedule_links` / `paving_closed_areas`；已有契约输入时只读消费，禁止本技能自行解图。
+- 安装、路径优先级和 Windows 用法见 `docs/bus-integration.md`。
 
-- Windows 接线：GitHub 完整包 scripts/yuanlin_statesync.cmd push/pull（GitHub/ClawHub 包含 .cmd，SkillHub 轻量包剔除 .cmd、Windows 改用同目录 .py 入口；macOS/Linux 用 `bash scripts/yuanlin_statesync.sh` 等价调用）；等价 lis-skill-bus/integration/yuanlin_publish_contract.sh / yuanlin_pull_contract.sh。Windows 未实机跑通，仅静态校验通过（CRLF 行尾；无 /Users、/bin/sh、python3 硬编码；py 启动器 + %PYTHON%/%CODEX_PYTHON% 回退；默认路径用 %USERPROFILE%\.codex）。
+## QTO 联动
 
-## QTO 五专业联动（P1，可选）
+可选目录级登记规则见 `docs/integration.md`；只登记输入、输出与缺口，不替代本技能算法和复核。
 
-可与 `cad-file-reader` 及其它算量 skill 联动（可选）：识别放 `<项目目录>/识别/<slug>/`，量算层输出写 `<项目目录>/算量/<slug>/`，用底座 `<底座>/scripts/qto_p1_link.py` 登记。此联动只在目录上登记输入/输出与缺口，不替代本技能既有算法、口径与复核。
+## 运行时
 
-## 环境与运行时（自动解析，无需手工配置）
-
-- 所有 `scripts/*.sh` 入口都 `source scripts/runtime_env.sh`，由它统一解析三件事：
-  1. **解释器**：`CAD_SKILL_PYTHON` / `CODEX_PYTHON` → Codex 运行时 → PATH 上的 `python3.12/3.11` → `python3`（要求 ≥3.10）；
-  2. **识图底座**：`CAD_SKILL_DIR` → 同级 `../cad-file-reader` → `<workbuddy-skills-root>/*/cad-file-reader` → `~/.claude` → `$HOME/.codex`；
-  3. **依赖路径**：把「本技能 scripts + 底座 scripts + 底座 vendor」拼进 `PYTHONPATH`，`ezdxf / ezdwg / openpyxl` 等**无需全局 pip 安装**。
-- 推荐用对应的 `bash scripts/<入口>.sh`；直接 `python3 <入口>.py` 只在全局已装齐依赖时可用。
-- 依赖缺失时按 `requirements.txt` 安装：`python3 -m pip install -r requirements.txt`。
+`scripts/*.sh` 自动解析 Python、cad-file-reader 和依赖路径。排障与手工安装见 `docs/runtime.md`。
 
 ## 授权与保留
 
-本技能以 **CC-BY-NC-SA-4.0** 授权给公众：可自由使用与改造，但**仅限非商业用途**（个人学习、研究与非营利使用）；改造后若公开发布，须以相同条款授权。
+CC-BY-NC-SA-4.0，仅限非商业用途。商业使用（含承接造价/算量咨询业务）须另行取得作者书面授权；作者保留全部商业权利（商业使用、再发布、封装收费、授予第三方商业授权）。条款全文见 `LICENSE.md`。
 
-企业、机构或将本技能用于经营性项目（如承接工程造价、算量咨询业务）的商业使用，需另行取得作者书面授权。
-
-作者（lis）作为著作权人，不受上述许可限制，明确保留以下权利：
-
-1. 将本作品用于任何商业目的；
-2. 改造、再发布、封装为收费商品或服务；
-3. 向第三方授予商业使用授权。
-
-完整许可文本见 `LICENSE.md`。

@@ -1,9 +1,24 @@
-## 0.39.4 · 2026-11-03
-
-- Added English-first metadata and README surface for the tri-platform package.
-- Kept local parsing and quantity algorithms unchanged.
-
 # Changelog
+
+## 0.39.6 · 2026-11-08 · 技能层瘦身与发布完整性
+
+- **SKILL.md 瘦身**：35,455 B → 16,426 B（-53.7%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。
+- **发布完整性**：被引用文件随包存在、Python/bash/JSON 语法通过、技能自检 PASS；未实现的检查如实记 SKIP。
+- **脱敏**：本机路径、真实项目名与公司资料引用替换为通用示例；平台专用入口只改发布副本。
+
+
+## 0.39.3 · 2026-11-01 · 依赖自检补齐 + 装包脚本修复
+
+- **补齐 vendor 的 typing_extensions**：ezdxf 的硬依赖（其 METADATA 明确 `Requires-Dist:
+  typing_extensions>=4.6.0`），此前 vendor 未带该包，`import ezdxf` 直接抛
+  `ModuleNotFoundError`，DXF 解析整条路（图层/文字/块/测量）实际不可用。本版随包补齐，
+  装完即可 `import ezdxf`。
+- **修复 `scripts/install_vendor.sh` 在 `set -u` 下必挂**：两处提示语句写成 `$_DEST（…`、
+  `$DEST（…`，全角括号紧贴变量名，bash 把 `_DEST（` 整体当变量名 → `unbound variable`
+  中断，导致「vendor 装好了、脚本却报错退出」。改为 `${_DEST}` 显式定界。
+- **install_vendor.sh 的 pip 清单加入 typing_extensions**：干净环境重装时依赖成套，不再缺件。
+- **`scripts/deps_check.sh` 新增 typing_extensions 检查**：缺件时直接提示「ezdxf 硬依赖，
+  缺了 DXF 解析整条路会失败」；`deps: full|partial` 判定也把该项纳入。
 
 ## 0.39.2 (prepare) · 2026-11-01 · P1 轴网可选字段
 
@@ -94,7 +109,7 @@
 ## 0.38.5
 
 - **修复（市政）构件系统名被图层污染**：系统名原取自「构件规则」，而规则是拿`文字+图层`匹配的。
-  实测经十一路室外管网图把「给水」「雨水」「中水」全画在 `DIM_污水` 图层上，四种管线统统标成 `sewage`——
+  实测sample-road室外管网图把「给水」「雨水」「中水」全画在 `DIM_污水` 图层上，四种管线统统标成 `sewage`——
   按系统统计管线数量时给水与污水混成一笔账，整张表失去使用价值。改为**文字优先、图层兜底**，
   新增 `system_basis`（`text`/`component_rule`）字段摊开依据。修后 949 条管线候选分布为
   sewage 496 / rainwater 322 / drainage 96 / water_supply 65 …
@@ -105,7 +120,7 @@
   截面 26 条（h_section 15 / channel 8 / tube 3），含 `H2000x600x36x60`、`HN500x200x10x16` 等；
   材质 Q355/Q390/Q460 共 89 处；连接 445 条（支座 302 / 加劲肋 100 / 焊缝 25 / 螺栓 13 / 高强螺栓 2）。
   **仍不出重量**——有截面有材质但没有长度汇总，就不该有吨位，契约 `final_quantity=false` 不变。
-- **新增** `scripts/tests/test_municipal_steel.py` 9 项：市政系统归属 3、SIGN 误命中 2、钢截面与材质 4、
+- **新增** scripts/tests（本机开发目录） 9 项：市政系统归属 3、SIGN 误命中 2、钢截面与材质 4、
   契约红线 1。全量 230 → **239 项通过**。
 - 已知边界（不修，写进报告）：`[2003` 这类「`[20` + 编号」粘连文字会被误判成槽钢截面；
   ALC 钢立柱布置图与钢柱预埋排版图本就没有型钢截面，识别出 0~1 条是正确行为。
@@ -122,7 +137,7 @@
   两种写法都要认，只认 `J\d` 会漏掉后三栋。
 - **补 review 类型**：`pair_excluded_admin_sheets`（图纸存在但被主动排除）、
   `missing_architecture` 改为逐范围报缺（指明哪栋楼/哪一层缺），不再并成一条说不清的数字。
-- 单测新增 15 项（图种判定 5 / 楼栋号 5 / 按范围配对 5），`test_drawing_relation.py` 共 41 项通过。
+- 单测新增 15 项（图种判定 5 / 楼栋号 5 / 按范围配对 5），`开发期单测` 共 41 项通过。
 
 ## 0.38.3
 
@@ -139,7 +154,7 @@
 
 - **授权与保留** 新增「授权与保留」段落：作者 lis 声明本技能可商用/可再分发/可对外授权，商用前按双许可说明确认是否需联系作者申报。
 - **脱敏（发布合规）** rules 中的公司内部来源字段由「公司知识库/…/规范图集」改为「公开规范与行业通用做法整理」，不再引用公司内部资料路径。
-- **版本对齐** 本机 `<skills-root>`、`<workbuddy-skills-root>` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
+- **版本对齐** 本机 `$CODEX_SKILLS_DIR/skills`、`~/.workbuddy/skills` 与发布仓库同步同版本；算法、契约、兼容性与上一版一致，未改业务逻辑。
 
 ## 0.37.1
 
@@ -171,7 +186,7 @@
   - CI workflow 增加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，并新增 `cad_scan examples/sample_room.dxf --format json` 步骤作为 Windows 中文 JSON 防线。
   - `doctor` 相关测试改 `sys.executable` 调 doctor.py（修远端 100644 无执行位 PermissionError）。
   - sqlite 连接显式 `close()`（修 Windows 文件锁导致测试清理失败）。
-  - `test_platform_paths.py` 路径断言改 `as_posix()`，并对 PATHEXT 差异做 mock。
+  - `开发期单测` 路径断言改 `as_posix()`，并对 PATHEXT 差异做 mock。
 - 三平台 CI 结果（run 39542083329）：macOS / Windows / Ubuntu 全部 success，self_test unit 265 / failures 0 / errors 0；sample_room.dxf 三平台 `text_total=2 / layers=3`；Windows 中文 JSON 可读。
 - 其他 agent 可调用：本技能为“本地 Python 脚本 + CLI 入口 + SKILL.md 指令”，任何能运行 Python 3 并执行命令行的 agent（Codex / DeepSeek 等）均可调用，不依赖单一平台。
 - 发布：GitHub + SkillHub + ClawHub 三平台同步更新到 0.32.1，本机 canonical 保持原版。
@@ -205,7 +220,7 @@
 - `schemas/*.schema.json` 纳入自测：内置零依赖轻量 JSON Schema 校验器（无需
   jsonschema 包），对 `examples/qto-sample` 样例做正/负向不变量校验，并继续用
   `scripts/cad_validate.sh` 校验全部 v0 契约样例。
-- 新增长效自动化用例 `self-test regression tests`（schema 正/负向、
+- 新增长效自动化用例 scripts/tests（本机开发目录）（schema 正/负向、
   快速跳过 CLI、缺 manifest 时回归记 skipped）；全量自测 201 → 205 项全部通过，
   三合一闭环无 manifest 运行 6 步：5 通过 + 1 跳过。
 - 用法已写进 `README.md` 与 `SKILL.md`；`manifest.json` 同步升版 0.31.6。
@@ -231,7 +246,7 @@
 
 ## 0.38.8（2026-10-30）
 - cad_municipal_geometry 新增就近管径挂接 attach_diameters：独立管径标注（DN150/de315/DN350-400 整条文字）建池，按同图框就近挂到管道标注（pipe_size，basis=nearby_text 带距离）与管线线段（diameter）；--dia-tolerance 控距离上限（默认 10000 图面单位）。真图（范村室外管网总图）实测：1363 条标注挂上 1137（83%）、11837 段挂上 6798；未挂段保持「未标注」不做多数派编造。
-- 新增 tests/test_municipal_diameter.py 8 项。
+- 新增 tests（本机开发目录） 8 项。
 
 ## 0.39.0 · 2026-10-30
 
@@ -268,10 +283,10 @@
 
 ## 0.39.2 · 2026-10-30（园林真图验收驱动）
 
-真图：经十一路安置区景观施工图全套 22 张（155MB），扫描 30s 全通，识图产出 2379 条图例候选。
+真图：sample-road安置区景观施工图全套 22 张（155MB），扫描 30s 全通，识图产出 2379 条图例候选。
 逐条核对发现**两类合成测试想不到的误报**，全部修复并计数可追溯：
 
-- **并列人名噪声**（`_noise_name_plant`）：图签「李强 周伟」被单字 token「李」判成乔木（6 条）。
+- **并列人名噪声**（`_noise_name_plant`）：图签「signer-A signer-B」被单字 token「李」判成乔木（6 条）。
   判据：植物名含空格（多段）且**没有任何一段**命中长度≥2 的植物词 → 非植物。
   反例保护：「云杉 实生」第一段命中「云杉」→ 保留（真图「杉木柱 末口」同理）。
 - **说明句 / 图名 / 铺装材料 / 硬景设施噪声**（`_noise_note_nonplant`）：

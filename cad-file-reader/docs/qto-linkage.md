@@ -124,3 +124,20 @@ scripts/qto_p3_clash.sh --project-dir <项目目录> [--date YYYYMMDD]
 - 不做跨专业冲突仲裁/自动改数（P3）。
 - 不要求用户五件全装；不新建“超大连体 skill”。
 - 不改四算量既有算法、损耗、口径与真正回归 pass 判定。
+
+
+---
+
+## 附录：原 SKILL.md 摘要（原样保留）
+
+`cad-file-reader` 是五件套（土建/安装/装饰/园林算量）联动体系的**唯一共同底座**。联动契约、schema、校验器与目录约定都放本技能；四算量 skill 之间互不强依赖，只在同项目发现其他专业输出时做交叉核对，缺失即跳过并标占位，不要求五件全装。
+
+- 主键三级来源：显式（`.qto/project.yaml`）→ 图内推断（`source=auto` + 证据）→ 文件级回退（`source=file`，置 `review_required=true`）。
+- 项目目录约定：`.qto/project.yaml`、`识别/<专业slug>/`、`算量/<专业>/`（P1）、`汇总/`（P2）。
+- 新输出为 `qto-project/v1`：在 `cad-file-reader/v0` 之上追加可选顶层字段 `qto_spec/project_key/draft_type/specialty/producer/placeholder`；旧 v0 输出零改动。
+- 校验器：`scripts/qto_validate.sh <项目目录> [--report-json 报告.json]`，旧 v0 只 warning 不 fail，`regression_pass` 与 `precision_note` 分开统计。
+- 生成/包装/占位工具：`scripts/qto_project.py init|wrap|placeholder`；`init --recognized` 支持一次多专业（例如 `--recognized tujian-suanliang anzhuang-suanliang`）。
+- 端到端示例见 `README.md#五件套联动端到端示例`（识别→P1→P2→P3→validate 一条链）。
+- P1 登记工具：`scripts/qto_p1_link.py`；P2 汇总工具：`scripts/qto_p2_summarize.py`（+`.sh`），只汇总各专业状态/候选数与缺口，不计算量。
+- P3 交叉核对工具：`scripts/qto_p3_clash.py`（+`.sh`），按部位出同专业/多专业覆盖缺口与需人工核对清单，不计算量、不仲裁量值。
+- 详细契约见 `docs/qto-linkage.md`；schema 见 `schemas/qto-project-v1.schema.json`；slug 映射见 `rules/skills-map.json`；自绘简化样例见 `examples/qto-sample/`。

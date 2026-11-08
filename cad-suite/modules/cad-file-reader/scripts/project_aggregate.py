@@ -4,7 +4,7 @@
 
 设计动机
 --------
-上游 cad_structural_geometry.py 只产出**逐条候选流水账**（实测 13 张华山 J 车库图：
+上游 cad_structural_geometry.py 只产出**逐条候选流水账**（实测 13 张样例 J 车库图：
 members 4196、rebars 7178），用户拿不到「各型号钢筋量」「每层有多少种规格的梁柱」。
 真图回归也印证瓶颈不在单条精度而在「没成表、不能跨图归并」：24 张抽样里
 duplicate_candidate 21303 条、missing_layer 18613 条。本模块的正解不是丢数据，

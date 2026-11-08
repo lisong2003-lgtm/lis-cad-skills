@@ -36,7 +36,6 @@ def _default_cad_dir() -> Path:
     cands = (
         Path.home() / ".codex" / "skills" / "cad-file-reader",
         Path.home() / ".claude" / "skills" / "cad-file-reader",
-        Path.home() / ".codex" / "skills" / "shangwu-suanliang",
     )
     for c in cands:
         if (c / "scripts" / "cad_statesync.py").is_file():

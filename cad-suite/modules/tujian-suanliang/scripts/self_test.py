@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""document + smoke 级自检（shangwu-suanliang）。
+"""document + smoke 级自检（tujian-suanliang）。
 
 覆盖：
 - SKILL.md / manifest.json 完整性（document）
@@ -42,7 +42,6 @@ CHECK_FILES: list[str] = [
         "scripts/run_qty.cmd",
         "rules/口径.json",
         "packs/quantity-pipeline/SKILL.md",
-        "scripts/tests/test_qty_core.py"
 ]
 CLI_HELP: list[str] = [
         "cad_quantity_pipeline.py"
@@ -57,11 +56,30 @@ def check(cond: bool, msg: str) -> None:
         print(f"FAIL  {msg}")
 
 
+def _cad_base() -> str:
+    """定位 cad-file-reader 识图底座（土建 CLI 运行期依赖 cad_interpret）。"""
+    import os as _os
+    cand = _os.environ.get("CAD_SKILL_DIR", "")
+    if cand and (Path(cand) / "scripts" / "cad_interpret.py").is_file():
+        return cand
+    for d in (ROOT.parent / "cad-file-reader",
+              Path.home() / ".codex" / "skills" / "cad-file-reader"):
+        if (d / "scripts" / "cad_interpret.py").is_file():
+            return str(d)
+    return ""
+
+
 def run(cmd: list[str], cwd: Path) -> tuple[int, str]:
     import os as _os
     env = dict(_os.environ)
     env["PYTHONIOENCODING"] = "ascii"
     env["PYTHONUTF8"] = "1"
+    cad = _cad_base()
+    if cad:
+        env["CAD_SKILL_DIR"] = cad
+        env["PYTHONPATH"] = _os.pathsep.join(
+            [str(HERE), str(Path(cad) / "scripts")]
+            + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     r = subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
@@ -105,7 +123,15 @@ def main() -> int:
     # （unittest 的 "Ran N tests / OK" 走 stderr，解析不可靠）。
     tests_dir = HERE / "tests"
     if tests_dir.is_dir() and any(tests_dir.glob("test_*.py")):
-        import unittest
+        import os as _os, unittest
+
+        # 进程内单元测试直接 import cad_geometry -> cad_interpret，需先把底座 scripts 加入 sys.path
+        _cad = _cad_base()
+        if _cad:
+            _cad_scripts = str(Path(_cad) / "scripts")
+            if _cad_scripts not in sys.path:
+                sys.path.insert(0, _cad_scripts)
+            _os.environ["CAD_SKILL_DIR"] = _cad
 
         # top_level_dir 必须等于 start_dir：tests/ 无 __init__.py，
         # 否则 3.13 会报 "Start directory is not importable"。

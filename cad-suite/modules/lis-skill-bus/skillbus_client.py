@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """lis-skill-bus 客户端（纯 stdlib）：供各 SKILL 通过 CLI 读写共享状态。
 
-与 skillbus.py 共享同一份 state.json：bus 未安装（无 MCP）时，
-此客户端直接读写状态文件，两个 skill 照样能联动；MCP 是增强层不是前置。
+与 skillbus.py 共享同一份 state.json。客户端仍属于 lis-skill-bus 包；
+未注册 MCP 时可直接使用同一包的 CLI，正式识图链路不能绕过 bus。
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def main() -> int:
             picked = entries.get("_last") or next(iter(entries.values()), None)
         if picked is None:
             print(json.dumps({"project_key": r["project_key"], "hit": False,
-                              "reason": "无共享状态（降级：本机正常解析）"}, ensure_ascii=False, indent=2))
+                              "reason": "无共享状态（未命中）"}, ensure_ascii=False, indent=2))
             return 0
         if args.out:
             Path(args.out).write_text(json.dumps(picked, ensure_ascii=False, indent=2), encoding="utf-8")

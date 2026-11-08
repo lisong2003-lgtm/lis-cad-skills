@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""lis-skill-bus v0.1.0 —— 本地 Skill 联动总线（纯 stdlib，无网络，跨平台）。
+"""lis-skill-bus v0.1.9 —— 本地 Skill 联动总线（纯 stdlib，无网络，跨平台）。
 
 职责：
   1) 统一存取项目状态（断点续上）
@@ -9,7 +9,7 @@
 
 双模式：
   python3 skillbus.py serve            # MCP stdio server（新行分隔 JSON-RPC）
-  python3 skillbus.py <CLI 子命令>     # 不装 MCP 时直接命令行降级可用
+  python3 skillbus.py <CLI 子命令>     # 未注册 MCP 时可直接使用命令行模式
 
 红线：不访问网络；公司数据只落本机 SKILLBUS_STATE_DIR。
 """
@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.1.6"
+VERSION = "0.1.9"
 # scripts/ 缺省时按根目录(SKILL.md/manifest)探测；加缓存(同图只解析一次)与溯源。
 SKILL_SIGNS = ("SKILL.md", "manifest.json", "deps.py")
 
@@ -33,7 +33,6 @@ STATE_DIR = Path(os.environ.get("SKILLBUS_STATE_DIR", CODEX_HOME / "skills" / ".
 STATE_FILE = STATE_DIR / "state.json"
 REGISTRY = {
     "cad-file-reader": "cad-file-reader/v0",
-    "shangwu-suanliang": "qto-project/v1",
     "tujian-suanliang": "qto-project/v1",
     "anzhuang-suanliang": "qto-project/v1",
     "zhuangshi-suanliang": "qto-project/v1",
@@ -380,10 +379,10 @@ def serve() -> int:
 
 
 # --------------------------------------------------------------------------- #
-# CLI 降级模式
+# CLI 模式
 # --------------------------------------------------------------------------- #
 def main() -> int:
-    ap = argparse.ArgumentParser(description="lis-skill-bus CLI 降级入口")
+    ap = argparse.ArgumentParser(description="lis-skill-bus CLI 入口")
     ap.add_argument("command", choices=["serve", "list-skills", "get-project-state",
                                         "push-project-state", "resolve-contract",
                                         "detect-skill", "find-contract"])

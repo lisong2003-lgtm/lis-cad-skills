@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 0.1.10 · 2026-11-08 · 技能层瘦身与发布完整性
+
+- **SKILL.md 瘦身**：4,311 B → 3,825 B（-11.3%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。
+- **发布完整性**：被引用文件随包存在、Python/bash/JSON 语法通过、技能自检 PASS；未实现的检查如实记 SKIP。
+- **脱敏**：本机路径、真实项目名与公司资料引用替换为通用示例；平台专用入口只改发布副本。
+
+
+## 0.1.9
+
+- 固化钢结构正式识图口径：`cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`；
+  缺 bus 时正式 statesync 以退出码 2 停止。
+- 清除“MCP 是增强层不是前置”“未命中降级本机解析”等容易被误解为可绕过正式链路的旧文案。
+- 版本号与自测基线统一为 0.1.9。
+
+## 0.1.8
+
+- 发布包统一使用系列蓝图蓝标 `icon.png`，与钢结构算量技能保持同一视觉系列。
+- 补齐 SkillHub 专用图标元数据与公开页面展示，不改变本机技能的识图或状态同步逻辑。
+
+## 0.1.7
+
+- 新增钢结构算量 `gangjiegou-suanliang` 的 bus 接线：`integration/gangjiegou_pull_contract.sh/.cmd`
+  与 `gangjiegou_publish_contract.sh/.cmd`，等价转发到该技能的 statesync。
+- 技能范围扩为 `cad-file-reader + 5 个算量技能`（土建、安装、装饰、园林、钢结构）；
+  钢结构核心 section 为 `members`、`sections`，支持 `--require-core`。
+- 文档收紧正式识图口径：固定为 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> 算量技能`，
+  缺 bus 时停止正式识图并提示安装，不提供算量技能自行解图的第二套路径。
+- 文档、版本号与 Windows 静态接线同步到 0.1.7。
+
 ## 0.1.6
 
 - 目录探测修复：`scripts/` 缺失也能探测（原默认 marker=scripts 的 deps.py 逻辑失败），

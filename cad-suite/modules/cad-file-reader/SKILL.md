@@ -1,14 +1,14 @@
 ---
 name: cad-file-reader
 slug: cad-file-reader
-displayName: CAD Drawing Data Extraction: Tables, Points, Coordinates, Notes and Evidence
-version: 0.39.2
+displayName: CAD 图纸识图与证据提取
+version: 0.39.6
 license: CC-BY-NC-SA-4.0
 author: lis
 i18n: true
-locale: en-US
-locales: [en-US, zh-CN]
-description: Extract structured data from DWG, DXF, DWT and PDF drawings: text, layers, blocks, geometry, coordinates, annotations, tables, points, areas and design notes. Results include readable summaries, review-ready tables, source evidence and JSON. Outputs are review candidates with final_quantity=false, not final quantities or settlement data.
+locale: zh-CN
+locales: [zh-CN, en-US]
+description: 本地读取 DWG/DXF/DWT/PDF，输出带证据的识图、拓扑和测量候选；PDF 走本机 OCR。只做识图，final_quantity=false，算量交给专项技能。
 ---
 
 # CAD 图纸识图与证据提取（cad-file-reader）
@@ -18,13 +18,13 @@ description: Extract structured data from DWG, DXF, DWT and PDF drawings: text, 
 - **禁止算量技能自行 `import ezdwg/read_cad`、自带或重新下载 cad-file-reader 来解图**；底座缺失时如实标 `unavailable`，不得降级成“自己解图”。
 - 用户要算量 = 必须先走 `cad-file-reader → 契约 → 算量`；计算入口默认拒绝直接 DWG，开发/回归调试才能用显式 `CAD_ALLOW_DIRECT=1` 逃生。
 - `lis-skill-bus` 是连接 cad-file-reader 契约与各算量技能的唯一定接线；算量结果必须带契约来源（图号/坐标证据）。
-- **DWG 解码兜底（仅特殊变体才需要，普通图不强制）**：正常 DWG 由内置 ezdwg 直读即可，不依赖任何外部 CAD/看图 App；只有 ezdwg/libredwg 都读不了的 ACAD 新变体/损坏卷（实测例：医科大结构 2#/3# 图审版）才用独立 `ODAFileConverter` 兜底转 DXF 复扫。ODA 是免费可选后端，不随技能强制安装；**禁止调用“CAD快速看图”等看图 App 的 GUI 或内嵌 ODA 库当解析后端**（它们只暴露导 PDF/打印，无公开 CLI，grep 不到转换器）。ODA 转换只能在**复制副本**上执行，禁止覆盖原图；转换后必须回读校验图层/文字/图元，副本 DXF ≠ 图纸原件，不能把转换产物当原图证据。
+- **DWG 解码兜底（仅特殊变体才需要，普通图不强制）**：正常 DWG 由内置 ezdwg 直读即可，不依赖任何外部 CAD/看图 App；只有 ezdwg/libredwg 都读不了的 ACAD 新变体/损坏卷（实测例：sample-site结构 2#/3# 图审版）才用独立 `ODAFileConverter` 兜底转 DXF 复扫。ODA 是免费可选后端，不随技能强制安装；**禁止调用“CAD快速看图”等看图 App 的 GUI 或内嵌 ODA 库当解析后端**（它们只暴露导 PDF/打印，无公开 CLI，grep 不到转换器）。ODA 转换只能在**复制副本**上执行，禁止覆盖原图；转换后必须回读校验图层/文字/图元，副本 DXF ≠ 图纸原件，不能把转换产物当原图证据。
 - **内存双档**：常规识图默认 `CAD_MEM_LIMIT_MB=4096`（mem_guard 默认）；仅实测超 4GB 的真实大图且串行跑时临时覆盖 `CAD_MEM_LIMIT_MB=8192`，不全局改默认；mem_guard 只在识图子进程内自终止，不杀 WorkBuddy/Codex。
 
 
 > **融合入口**：本技能可单独使用；若手上是一整套图纸、要跨专业出一张总表，用 `cad-suite` 一个入口即可跑完发现→识图→关系→聚合→跨专业对照→算量→出表，不必逐个调用。口径与红线在 cad-suite 里是同一份。
 
-本技能只做**识图、证据提取、候选解释和测量候选**，可输出长度、面积、体积的识图候选值、计算式和复核边界；不把候选值冒充最终工程量、清单量、材料量、造价或结算量。结构混凝土/钢筋算量已迁到 `tujian-suanliang`（本机目录 `shangwu-suanliang`），装饰、安装、钢结构、市政算量分别交给对应专项 skill。
+本技能只做**识图、证据提取、候选解释和测量候选**，可输出长度、面积、体积的识图候选值、计算式和复核边界；不把候选值冒充最终工程量、清单量、材料量、造价或结算量。结构混凝土/钢筋算量已迁到 `tujian-suanliang`，装饰、安装、钢结构、市政算量分别交给对应专项 skill。
 
 ## 安装与依赖
 
@@ -36,23 +36,7 @@ description: Extract structured data from DWG, DXF, DWT and PDF drawings: text, 
 
 ## 平台支持矩阵
 
-支持 macOS / Windows 10 及 11 / Linux x86_64，功能一致；差异仅在启动脚本与可选后端：
-macOS/Linux 用 `scripts/*.sh`，Windows 用 `scripts/*.cmd`（GitHub 完整包才有全部 `.cmd`；SkillHub 轻量包剔除 `.cmd`，Windows 请改用同目录 `scripts/*.py`，或装 GitHub 完整包）。三平台 CI 见 `.github/workflows/cad-xplatform.yml`。
-
-| 能力 | macOS | Windows 10/11 | Linux x86_64 |
-|---|---|---|---|
-| DXF / DWT 流式解析 | ✅ | ✅ | ✅ |
-| DWG 流式解析 | ✅ | ✅ | ✅ |
-| DWG→DXF 复扫 | ⚠️ 可选后端 | ⚠️ 可选后端 | ⚠️ 可选后端 |
-| PDF 矢量 / 扫描 OCR | ⚠️ 可选后端 | ⚠️ 可选后端 | ⚠️ 可选后端 |
-| 专业识图候选 | ✅ | ✅ | ✅ |
-| 测量候选 | ✅ | ✅ | ✅ |
-| qto 五件套联动 | ✅ | ✅ | ✅ |
-| 批量台账 Excel | ✅ | ✅ | ✅ |
-| 内存看门狗 | ✅ | ✅（psutil 主路径） | ✅ |
-| self_test / doctor | ✅ | ✅ | ✅ |
-
-平台安装与 FAQ 见 `README.md`“平台支持矩阵”。
+支持 macOS / Windows 10–11 / Linux x86_64，核心能力一致；Windows SkillHub 轻量包无 `.cmd` 时改用同目录 `.py`，或装 GitHub 完整包。DWG→DXF 复扫、PDF OCR 属可选后端。完整矩阵与安装 FAQ 见 [README.md](README.md)。
 
 ## 执行原则
 
@@ -63,22 +47,11 @@ macOS/Linux 用 `scripts/*.sh`，Windows 用 `scripts/*.cmd`（GitHub 完整包�
 - 大图先扫描、按需局部展开；高内存/高 CPU 立即暂停。
 - 首次扫描可用 `--cache-dir` 建立本机证据缓存；同图重复查询命中缓存。缓存只保存识图证据，不保存最终工程量。
 
-## 可靠性策略（快速失败 / 批量跳档 / 复核截图）
+## 可靠性策略（快速失败）
 
-- **入口快速失败**：`cad_scan / read_cad / convert_dwg` 先跑 `scripts/cad_preflight.py` 的轻量预检
-  （<5 秒，只读前 4KB，不调解析器）。空文件、<1KB、魔数不是 AC####/DXF-SECTION/%PDF 的头会立即标
-  “快速失败”并跳过，不假装转换成功；DWG 版本不在支持列表时直接报“不支持的 DWG 版本”。
-- **批量不中断**：`cad_batch.sh --out 台账` 对坏图/加密图/不支持版本逐图记录
-  “缺口/失败原因”（`自检汇总.md` 与 `_state.json`），单图失败不影响其它图继续跑。
-  - 加密 DWG（ezdwg 报 `encrypted/password`）记为“加密 DWG：需密码或人工解锁”。
-  - 不支持版本记为“不支持的 DWG 版本”。
-- **超时与内存看门狗**：单图沿用 `--budget` 阶段预算和 `--cap-mb` 内存闸；批量层对整条
-  `cad_scan` 再加硬超时（超时 rc=124），退出码 -9/内存闸关键词被翻译成“内存看门狗终止”，原因写入台账。
-- **PDF 复核截图**：`cad_pdf_ocr.sh --out-dir 输出` 自动把可疑页面截图写到
-  `输出/_review/<图名>-p<页码>.png`，并写 `_review/index.json`（每页原因 + 图片相对路径）。
-  - 触发条件：OCR 失败页、扫描页 OCR 无有效文字、整页平均置信 <60%、出现单行置信 <40% 的低置信区块。
-  - 截图对应的候选项带 `review_image` 字段；`--no-review` 可关闭截图输出。
-- 以上改动保持 `cad-file-reader/v0` 契约不变，`scripts/cad_validate.sh` 校验仍需通过。
+- 大图先过预检；空文件、坏图、加密图和不支持版本快速失败，批量逐图记录缺口，单图失败不中断。
+- `--budget` 控制阶段预算，`--cap-mb` 控制内存；超时或内存闸终止写入台账。
+- PDF 可疑页截图、触发条件和关闭开关见 `docs/reliability.md`。
 
 ## 统一候选契约（cad-file-reader/v0）
 
@@ -92,43 +65,20 @@ macOS/Linux 用 `scripts/*.sh`，Windows 用 `scripts/*.cmd`（GitHub 完整包�
 - 交付或交接前可校验：`scripts/cad_validate.sh 输出.json`。
 - **输出深度（用户可选）**：默认完整输出；追加 `--concise` 使用精简契约省 Token（候选只保留主干字段 id/类别/图层/文本/置信度/复核原因/来源文件）；`--full` 或 `--with-evidence` 恢复完整证据。环境变量 `CAD_CONCISE=1` 可全局设为精简默认。
 
-## lis-skill-bus 推荐联动（不装自动降级）
+## lis-skill-bus 契约联动（算量链必须安装）
 
-> 好处：同一张 CAD 图只解析一次，本技能与五件套、其它算量技能共享同一份项目状态与识图契约；完全本地、不联网、不上云。
-> 安装入口（跨平台）：先装 lis-skill-bus —— SkillHub slug：`lis-skill-bus`；GitHub：`lisong2003-lgtm/lis-skill-bus`。装完后运行安装器 `python install_py.py --apply`（只复制不注册 MCP：`SKIP_MCP_REG=1`）。
-> **不装自动降级**：找不到 bus 时自动写 `$HOME/.codex/skills/.skillbus/state.json`，先跑通工作流，装好后无缝读取；五件套仍各自可用，功能不丢。
-
-- 状态过滤：项目名/楼栋/楼层一致时，把本次解析的 `cad-contract/v1`（含 project_key / producer / source / contract）发布到本机 lis-skill-bus，供五件套后续直接取数，不再重复解图。
-- 自动接线入口（推荐，不侵入解析核心）：
-  - `scripts/cad_statesync.sh push --entry-file <cad-file-reader/v0.json> --project 项目 [--building 楼栋] [--floor 楼层] [--source-file 图纸.dwg] [--specialty 土建]`
-    —— 自动把 cad-file-reader/v0 契约包装成 cad-contract/v1 并发布；`--detail-json <cad_scan --detail-json 产物>` 可直接包装详情。`--entry-file` 若已是 cad-contract/v1 则原样补全主键后推送。
-  - `scripts/cad_statesync.sh pull --project 项目 [--building 楼栋] [--floor 楼层] [--out 落盘.json]`
-    —— 拉取最近一次 cad 契约（供土建/安装/装饰/园林算量后续取数，命中即免重复解图）。
-  - `--state-push` / `--resume` 分别为 push / pull 的别名；Windows 统一用 `python scripts/cad_statesync.py push/pull ...`（Windows SkillHub 版无 `.cmd`，直接走 py 入口，功能等价）。
-- 兼容/降级：客户端按如下优先级定位 `skillbus_client.py`，正式路径存在时不回退 dev 副本：
-① `SKILLBUS_HOME`（bus 目录）或 `SKILLBUS_CLIENT`（直接指向 client 文件）显式指定
-② `$HOME/.codex/mcp_servers/lis-skill-bus/skillbus_client.py`（正式安装落点）
-③ `$HOME/.codex/skills/lis-skill-bus/skillbus_client.py` / `$HOME/.codex/skills/.skillbus/skillbus_client.py`
-④ 常见本机开发/临时副本目录（最后才回退）。
-命中 dev/临时副本时 stderr 会输出告警行「bus 命中来源：<路径>（临时副本/dev，非正式安装）」，正式路径输出「（正式安装）」；找不到 bus 时不报错，直接写 `$HOME/.codex/skills/.skillbus/state.json`（与 bus 同构，后续装 bus 可无缝读取）。 无 MCP 不影响任何识图能力，核心解析与 cad-file-reader/v0 契约不变。
-- 消费端必选核心口径（供接线核对，bus 内各专业自行判定）：土建 `text_records+geometry_segments`（默认启用）；安装 `circuits`/`route_segments`；装饰 `rooms`/`room_schedules`；园林 `plant_schedule_links`/`paving_closed_areas`。各专业 statesync `pull --require-core` 收紧为必选核心至少一命中；默认仍为宽松候选级命中，不改基础解析契约。
-
-- Windows 接线：Windows SkillHub 版无 `.cmd`，统一用 `python scripts/cad_statesync.py push/pull ...`（功能一致）。Windows 未实机跑通，仅静态校验通过（CRLF 行尾；无 /Users、/bin/sh、python3 硬编码；py 启动器 + %PYTHON%/%CODEX_PYTHON% 回退；默认路径用 %USERPROFILE%\.codex）。
+- CAD 可独立识图；土建/安装/装饰/园林/钢结构算量链必须经 bus 复用 `cad-contract/v1`，bus 缺失时停止算量链并提示安装；已有契约输入时仍只消费契约，不自行解图。
+- 最短入口：`scripts/cad_statesync.sh push ...` 发布，`scripts/cad_statesync.sh pull ...` 取最近契约。
+- 安装、路径优先级、核心 section 和 Windows 用法见 `docs/bus-integration.md`。
 
 ## 五件套联动契约（qto-project/v1 可选）
-## 五件套联动契约（qto-project/v1 可选）
 
-`cad-file-reader` 是五件套（土建/安装/装饰/园林算量）联动体系的**唯一共同底座**。联动契约、schema、校验器与目录约定都放本技能；四算量 skill 之间互不强依赖，只在同项目发现其他专业输出时做交叉核对，缺失即跳过并标占位，不要求五件全装。
+本技能是土建/安装/装饰/园林四算量的**唯一共同底座**；四算量互不强依赖，只在同项目发现他专业输出时交叉核对，缺失即跳过并标占位。
 
-- 主键三级来源：显式（`.qto/project.yaml`）→ 图内推断（`source=auto` + 证据）→ 文件级回退（`source=file`，置 `review_required=true`）。
-- 项目目录约定：`.qto/project.yaml`、`识别/<专业slug>/`、`算量/<专业>/`（P1）、`汇总/`（P2）。
-- 新输出为 `qto-project/v1`：在 `cad-file-reader/v0` 之上追加可选顶层字段 `qto_spec/project_key/draft_type/specialty/producer/placeholder`；旧 v0 输出零改动。
-- 校验器：`scripts/qto_validate.sh <项目目录> [--report-json 报告.json]`，旧 v0 只 warning 不 fail，`regression_pass` 与 `precision_note` 分开统计。
-- 生成/包装/占位工具：`scripts/qto_project.py init|wrap|placeholder`；`init --recognized` 支持一次多专业（例如 `--recognized tujian-suanliang anzhuang-suanliang`）。
-- 端到端示例见 `README.md#五件套联动端到端示例`（识别→P1→P2→P3→validate 一条链）。
-- P1 登记工具：`scripts/qto_p1_link.py`；P2 汇总工具：`scripts/qto_p2_summarize.py`（+`.sh`），只汇总各专业状态/候选数与缺口，不计算量。
-- P3 交叉核对工具：`scripts/qto_p3_clash.py`（+`.sh`），按部位出同专业/多专业覆盖缺口与需人工核对清单，不计算量、不仲裁量值。
-- 详细契约见 `docs/qto-linkage.md`；schema 见 `schemas/qto-project-v1.schema.json`；slug 映射见 `rules/skills-map.json`；自绘简化样例见 `examples/qto-sample/`。
+- 主键三级：显式 `.qto/project.yaml` → 图内推断（`source=auto`+证据）→ 文件级回退（`source=file`，`review_required=true`）。
+- 新输出 `qto-project/v1` 在 v0 上追加可选字段 `qto_spec/project_key/draft_type/specialty/producer/placeholder`，旧 v0 零改动。
+- 工具：`scripts/qto_validate.sh`（校验）、`qto_project.py init|wrap|placeholder`、`qto_p1_link.py`、`qto_p2_summarize.py`、`qto_p3_clash.py`；P2/P3 只汇总与核对，不算量、不仲裁量值。
+- 完整摘要与端到端示例：`docs/qto-linkage.md`；schema `schemas/qto-project-v1.schema.json`；slug 映射 `rules/skills-map.json`；样例 `examples/qto-sample/`。
 
 ## 图层/块语义与图纸对比
 
@@ -154,109 +104,20 @@ scripts/cad_compare.sh 基准详情.json 目标详情.json \
 
 ## PDF 图纸（识图候选，本机分流 + 本地 OCR）
 
-PDF 图纸先用本机 `pdf-inspector` 分类：文本型取原生文字，扫描/混合型用 `pdftoppm` 渲染后调本地 `image-ocr` 出线性文字候选。全部结果只作识图/文字候选，一律进 `review_candidates` 并标 `missing_layer/missing_unit/missing_scale`，不输出测量数量。
-
-扫描/混合页候选的 OCR 像素框按渲染 dpi（默认 200，1in=72pt）换算成 `page_bbox`（PDF 点），并在候选上保留 `source_bbox_px` 供追溯。
-
-矢量 PDF（`source_format=pdf_vector`）额外输出 `pdf_meta.vector_text_items`：原生文字 `x/y/width/height/font/font_size/page` 坐标候选，单位为 PDF 点，**仅作证据与分流，不参与测量**；可单独用 `scripts/cad_pdf_vec.sh 图纸.pdf --json vec.json` 复核。
-
-图签栏提取为**版式优先 + 关键词兜底**：`pdf_meta.title_block` 优先扫描右下角图签栏区域（x>页面宽45%、y<页面高55%）命中字段，未命中字段再回退全量关键词；`page_bbox` 记录证据坐标，仅作元数据锚点，需人工核对。
-
-```bash
-# 分类 + 输出文字识图候选（文本型 / 扫描型 PDF 均可）
-scripts/cad_pdf_ocr.sh 图纸.pdf --out-dir 图纸PDF识图
-
-# 只分类不 OCR（先看是什么类型）
-scripts/cad_pdf_ocr.sh 图纸.pdf --classify-only
-
-# 扫描页并行数（默认3，建议≤CPU核心数）
-scripts/cad_pdf_ocr.sh 图纸.pdf --workers 4 --out-dir 图纸PDF识图
-
-# 自定义缓存目录；两级缓存（文件级 pdf 元数据 + 页面级 OCR 行结果）
-scripts/cad_pdf_ocr.sh 图纸.pdf --cache-dir /tmp/pdf-cache --out-dir 图纸PDF识图
-
-# 强制重新解析/渲染，忽略缓存
-scripts/cad_pdf_ocr.sh 图纸.pdf --force --out-dir 图纸PDF识图
-```
-
-输出为 `*.pdf识图.json`（cad-file-reader/v0 契约）与同名 Markdown；可用 `scripts/cad_validate.sh 输出.json` 校验。公司图纸字节全程本机处理，不上云。
+先用本机 `pdf-inspector` 分类：文本型取原生文字，扫描/混合型用 `pdftoppm` 渲染后调本地 `image-ocr`。结果只作识图/文字候选，一律进 `review_candidates` 并标 `missing_layer/missing_unit/missing_scale`，不输出测量数量。矢量 PDF 的 `pdf_meta.vector_text_items` 仅作证据，不参与测量；图签栏提取为版式优先 + 关键词兜底，需人工核对。公司图纸字节全程本机处理，不上云。dpi 换算、缓存与全部命令见 `docs/pdf-pipeline.md`。
 
 ## 统一自测/回归闭环与发布预检
 
-日常/CI 用 `scripts/self_test.sh` 跑“三合一”闭环（doctor 环境体检 → 全量
-unittest → `schemas/*.schema.json` + `cad_validate.sh` 契约校验 → 样例 DXF 回归 →
-坏文件快速失败不变量 → 可选真实 DWG 回归），输出 JSON + Markdown 报告：
-
-```bash
-bash scripts/self_test.sh                                    # 无真图时跑闭环，回归段记 skipped
-bash scripts/self_test.sh --manifest <本地真图清单.json>      # 带真实 DWG 回归
-bash scripts/self_test.sh --out-dir 报告输出目录 --json-only
-```
-
-发布前仍跑 `scripts/run_preflight.sh`：依次执行全量 self-test、契约样例校验、`cad_release_scrub.py` 脱敏扫描；带真图清单时加 `--manifest <本地真图清单.json>` 跑真实图纸回归。任一环节失败即视为未通过，禁止发布（本机自测现 205 项）。
-
+发布前必须跑 `bash scripts/run_preflight.sh`；它串起 `self_test`、契约样例校验和 `cad_release_scrub.py` 脱敏扫描，带真图清单时追加真实 DWG 回归。任一非跳过环节失败即禁止发布。完整命令、用例说明和跳过规则见 [README.md](README.md)。
 
 
 ## 快速读取
 
-```bash
-# 大图优先：构件编号、图层、关键词、图框
-scripts/cad_scan.sh 图纸.dwg --only 梁,板,柱,墙 --cluster 1500 --format md -o 图纸扫描
+大图先 `scripts/cad_scan.sh 图.dwg --only 梁,板,柱,墙 --cluster 1500`；关键词与原文证据用 `--search`；要几何/详情加 `--with-mtext --with-geom`；同图重复查询加 `--cache-dir`，再按 `--roi` 或 `--sheet` 局部读；交付用 `--format all|xlsx|docx`。完整命令、缓存与 `--concise` 省 token 开关见 `docs/quick-scan.md`。
 
-# 关键词与原文证据
-scripts/cad_scan.sh 图纸.dwg --search "板厚|C30|抗震等级|保护层|22G101"
+## 批量识图台账
 
-# 需要识图几何和详情时
-scripts/cad_scan.sh 图纸.dwg --only 梁,板,柱,墙 --with-mtext --with-geom \
-  --cluster 1500 --detail-json 图纸详情.json --format all -o 图纸扫描
-
-# 大图首次全量扫描并建本机证据缓存
-scripts/cad_scan.sh 图纸.dwg --with-geom --with-geom-layer \
-  --cache-dir /tmp/cad-file-reader-cache --format all -o 图纸扫描
-
-# 同图重复查询：命中缓存后按图面矩形局部读取
-scripts/cad_scan.sh 图纸.dwg --with-geom --with-geom-layer \
-  --cache-dir /tmp/cad-file-reader-cache --roi 0,0,30000,20000 --format json -o 局部读取
-
-# 省 Token：精简输出（默认完整；显式 --concise 精简候选主干，--full/--with-evidence 恢复完整）
-scripts/cad_scan.sh 图纸.dwg --concise --format json -o 图纸精简
-
-# 交付常用：同一结果同时导出 Markdown/JSON/CSV/Excel/Word
-scripts/cad_scan.sh 图纸.dwg --only 梁,板,柱,墙 --cluster 1500 \
-  --detail-json 图纸详情.json --format all -o 图纸扫描
-# 单独导出 Excel 或 Word（需 --out 指定前缀）
-scripts/cad_scan.sh 图纸.dwg --only 梁,板,柱,墙 --format xlsx -o 图纸扫描
-scripts/cad_scan.sh 图纸.dwg --only 梁,板,柱,墙 --format docx -o 图纸扫描
-# 同图重复查询：命中缓存后按图框编号局部读取
-scripts/cad_scan.sh 图纸.dwg --with-geom --with-geom-layer \
-  --cache-dir /tmp/cad-file-reader-cache --sheet 1 --format json -o 图框读取
-```
-
-## 批量识图台账（scripts/cad_batch.sh）
-
-批量扫图输出候选级台账，复用 `cad_scan` 引擎：
-
-```bash
-scripts/cad_batch.sh 图纸目录 --out 台账 --glob "*.dwg;*.dxf" --recursive
-scripts/cad_batch.sh 图纸目录 --out 台账 --resume        # 按 SHA-256 断点续跑
-scripts/cad_batch.sh 图纸A.dwg 图纸目录 --out 台账 --glob "*.dxf" --cache-dir /tmp/cad-cache
-```
-
-- 输出 `<out>/识图台账.xlsx`：`识图台账` sheet 每候选一行，含 `复核原因 / 证据坐标 / 来源文件` 列，
-  `review_required` / 置信度<0.5 / 复核原因非空的行黄底；每图一个 `汇总·图名` sheet 与整体 `图纸汇总` sheet
-  （候选人 / 复核人 / 缺口）。
-- 输出 `<out>/自检汇总.md`：逐图列出 可交付 / 需人工复核 / 失败跳过 / 缺输入。
-- 单图失败不中断整批；`--resume` 用 `_state.json` 按源文件 SHA-256 跳过已成功图。
-- 每图写入 `_contract/<图名>.json`（cad-file-reader/v0，逐候选 `final_quantity=false`），可 `scripts/cad_validate.sh 校验`。
-- 大图仍走 `cad_scan` 的 `mem_guard`/时间预算；`--budget` 可调单图时间预算。
-
-缓存键使用源文件 SHA-256 和影响证据内容的扫描参数档；`--roi`、`--sheet` 只做查询过滤。ROI 几何使用预归一化 bbox 索引，缓存写入先批量落库、延后建索引。JSON 的 `cache.hits/misses` 记录命中情况。局部结果只返回命中范围内的证据，不混入整图块统计。
-缓存只保存识图证据，不保存最终工程量、扣减、材料量、造价或结算量。
-JSON 汇总输出 `cache.read_ms/write_ms/db_files/db_bytes`；每个文件输出 `cache_read_ms/cache_write_ms/cache_bytes`。
-缓存盘点/清理用 `scripts/cad_cache_admin.sh 缓存目录`：默认只读盘点；`--cleanup` 生成计划，`--apply` 才删除。temp/legacy 默认进入计划；corrupt/unknown 永不删除；current 默认保留，必须显式 `--include-current` 且提供 `--max-age-days` 或 `--max-total-mb`。
-
-口径：`原文次数`不是根数；`--count-by auto`优先平法集中标注，缺集中标注退回标注位置去重。
-`--with-geom`提供图面几何候选和证据；需要长度/面积/体积候选时再用 `cad_measure`，输出始终带 `final_quantity=false`。
+`scripts/cad_batch.sh 图纸目录 --out 台账 --resume` 逐图写入 v0 契约、复核原因和失败台账，单图失败不中断。完整参数、输出与缓存说明见 `docs/batch-workbook.md`。
 
 ## 测量候选（长度 / 面积 / 体积）
 
@@ -276,103 +137,27 @@ scripts/cad_measure.sh 描述几何/图纸详情.descriptive.json --thickness-m 
 
 本层不输出最终工程量；扣减、重叠、做法、损耗、分账、清单量和材料量由专项算量 skill 负责。
 
-## 装饰/安装/电气/钢结构/市政识图路由
+## 转换与规范辅助
 
-专业识图统一入口见 `pack-index.md`（默认入口表）；各专业只输出识图候选，选量交给专项 skill。
+- DWG 转 DXF / 批量转换：`scripts/convert_dwg.sh`（默认不覆盖已有输出，200MB 入口闸 + 内存看门狗）。
+- 说明/构件规则初解：`scripts/cad_interpret.sh`；规范/图集元数据与输入缺口：`scripts/cad_normative.sh`——只出元数据与风险提示，不出条文符合性结论。
+- 完整命令与参数见 `docs/conversion-and-normative.md`。
 
-| 专业 | 脚本 | 方法/边界 |
-|---|---|---|
-| 装饰 | `scripts/cad_descriptive_geometry.sh 详情.json --out-dir 描述几何` | `packs/descriptive-geometry/SKILL.md`；房间/洞口/做法候选，不直接出量 |
-| 安装 | `scripts/cad_scan.sh 安装图.dwg ... --detail-json 安装详情.json` + `scripts/cad_mep_geometry.sh 安装详情.json` | `packs/mep-geometry/SKILL.md`；系统/路由/设备/立管候选，选量给 anzhuang-suanliang |
-| 电气 | `scripts/cad_scan.sh 电气图.dwg ... --detail-json 电气详情.json` + `scripts/cad_electrical_geometry.sh` | `packs/electrical-geometry/SKILL.md`；回路/规格/防雷/消防/弱点候选；不展开芯数线长/负荷/照度 |
-| 钢结构 | `scripts/cad_scan.sh 钢结构图.dwg ... --detail-json 钢结构详情.json` + `scripts/cad_steel_geometry.sh` | `packs/steel-geometry/SKILL.md`；构件/截面/连接/材料候选；重量涂装交专项 |
-| 市政 | `scripts/cad_scan.sh 市政图.dwg ... --detail-json 市政详情.json` + `scripts/cad_municipal_geometry.sh` | `packs/municipal-geometry/SKILL.md`；道路/管网/桥梁/桩号/标高候选；0.39.0+ 提取圆实体（井圈/阀门/消火栓，`--with-geom` 自动，标注层/图例区/微圆三层剔除） |
+## 专业识图路由
 
-## DWG 转 DXF
+所有专业包统一按 `pack-index.md`（默认入口表）选包：结构、总图场地、给排水暖通、精装修/室内、幕墙、人防、预制装配、装饰、安装、电气、钢结构、市政、园林——每行给出脚本、`packs/<name>/SKILL.md` 与边界。完整对照表见 `docs/domain-routing-full.md`。
 
-```bash
-scripts/convert_dwg.sh 图纸.dwg --out 图纸.dxf
-scripts/convert_dwg.sh 图纸目录 --recursive --out 输出目录
-```
+各专业只出识图证据，不输出面积/长度/数量/体积/材料量或造价；统一契约与置信分层见上文「统一候选契约」。本机真实回归用 `scripts/run_real_dwg_regression.sh --manifest 真图清单.json`（`kind=electrical|structural|site|hvac_plumbing|interior_finish|curtain_wall|civil_defense|precast`），发布前脱敏。
 
-默认输出已存在不覆盖；大文件有 200MB 入口闸和内存看门狗，必要时才显式放开。
+## 跨图聚合 / 图纸关系 / 钢筋牌号
 
-## 说明、规范与图集辅助
-
-```bash
-# 1. 抽取说明文字、标注和图纸参数
-scripts/cad_scan.sh 图纸.dwg --with-mtext --with-geom \
-  --detail-json 图纸详情.json --format json -o 图纸扫描
-
-# 2. 解读构件规则、引用目录和缺失输入
-scripts/cad_interpret.sh --scan 图纸扫描.json --detail 图纸详情.json \
-  --rules rules --format all -o 图纸解读
-
-# 3. 定位规范/图集元数据、版本风险、参数冲突和资料入口
-scripts/cad_normative.sh --scan 图纸扫描.json --detail 图纸详情.json \
-  --rules rules --format all -o 规范辅助
-```
-
-规范辅助输出：已索引/未索引编号、现行/旧版/待确认状态、知识库相对路径或在线入口、缺少的设计输入、多参数冲突。`rules/standards.json`只保存编号、名称、专业、状态和资料入口元数据；条文适用性以图纸指定版本和授权全文为准。
-
-## 结构/总图场地/给排水暖通/精装修/幕墙/人防/预制装配识图路由
-
-| 专业 | 脚本 | 方法/边界 |
-|---|---|---|
-| 结构 | `scripts/cad_scan.sh 结构图.dwg ... --detail-json 结构详情.json` + `scripts/cad_structural_geometry.sh` | `packs/structural-geometry/SKILL.md`；梁板柱墙/配筋/节点/轴号候选 + **几何轴网**（`axis_nets`，给跨专业核对用）；方量钢筋交 tujian-suanliang |
-| 总图场地 | `scripts/cad_scan.sh 总图.dwg ... --detail-json 总图详情.json` + `scripts/cad_site_geometry.sh` | `packs/site-geometry/SKILL.md`；红线/道路/停车/挡墙/土方候选；量交市政/土建 |
-| 给排水暖通 | `scripts/cad_scan.sh 给排水图.dwg ... --detail-json 给排水详情.json` + `scripts/cad_hvac_plumbing_geometry.sh` | `packs/hvac-plumbing-geometry/SKILL.md`；管/风管/设备/支吊架候选；量交 anzhuang-suanliang |
-| 精装修/室内 | `scripts/cad_interior_finish_geometry.sh` | `packs/interior-finish-geometry/SKILL.md` |
-| 幕墙 | `scripts/cad_curtain_wall_geometry.sh` | `packs/curtain-wall-geometry/SKILL.md` |
-| 人防 | `scripts/cad_civil_defense_geometry.sh` | `packs/civil-defense-geometry/SKILL.md` |
-| 预制装配 | `scripts/cad_precast_geometry.sh` | `packs/precast-geometry/SKILL.md` |
-
-各专业只做识图证据，不输出面积/长度/数量/体积/材料量或造价；统一契约与置信度分层见上文“统一候选契约”。本机真实回归用 `scripts/run_real_dwg_regression.sh --manifest 真图清单.json`，清单可写 `kind=electrical|structural|site|hvac_plumbing|interior_finish|curtain_wall|civil_defense|precast`，发布前脱敏。
-
-## 跨图聚合 / 图纸关系 / 钢筋牌号（识图之后的成表能力）
-
-单张图只能回答「这张图有什么」。下面三个脚本把多张图的候选变成能直接看的表，仍是提取而非工程量。
-
-| 脚本 | 作用 | 输出 |
-|---|---|---|
-| `scripts/drawing_relation.py` | 按项目目录聚类单体、楼层序列与缺口、专业判定、同层跨专业配对、**配对后轴网核对** | `clusters` / `floor_series` / `pairs`（含 `grid_check`），缺建筑图记 `missing_architecture` |
-| `scripts/cad_axis_net.py` | **几何轴网提取**：按轴线实体还原轴网（方向/轴数/总跨/开间序列），供跨专业核对 | 被 `cad_structural_geometry` 写入 `axis_nets`；也可单独跑 `--inputs scan/*_detail.json` |
-| `scripts/cad_axis_networks.py` | **可选 `axis_networks[]`（轴号+轴线→轴格区间）**：从 text_records 的 AXIS/轴号/轴标/轴网/定位 文字取轴号（数字轴/字母轴），在轴号坐标附近找同方向长线段作几何佐证，按 sheet 输出 axis_id/pos/grid.spans。**坐标只是佐证**；无轴网如实 `missing/degraded` | 复用已解析 `cad_scan` 详情 JSON，`--inputs scan/*_detail.json`；可并入 cad-file-reader/v0 contract（可选字段，向后兼容） |
-| `scripts/project_aggregate.py` | 楼层×分区×类别×规格归并构件；按直径×牌号归并钢筋；楼层×直径交叉表 | `aggregate.json/.md/.csv`，`count` 即原始候选重复次数 |
-| `scripts/rebar_grade.py` | 从本批图纸说明表反解「符号→牌号」，回填到钢筋型号 | `rebar-legend.json/.md` |
-
-轴网核对的口径（重要，别说成「已证明是同一栋楼」）：
-
-- **只认几何，不认文字**。轴号在天正转出的图里基本抓不到（实测轴网图层上 0 条文字），
-  但轴线实体一直在——等长、平行、等距重复的直线就是它。
-- **判据是「结构侧覆盖」**：结构柱网通常只是建筑轴网的子集（建筑多出外墙/门窗定位轴），
-  所以看结构图的开间有多少能在建筑图里找到，不看两侧最大值。
-- **开间支持「段和」匹配**：结构一个 3300 开间，建筑图可能被隔墙定位轴拆成 1650+1650。
-- **能证明「不一致」，不能证明「是同一栋」**：同户型不同楼栋共用同一套轴网，
-  间距会完全一致。核对结论为「轴网一致」只说明两图描述同一类平面，仍需人工确认楼栋/范围。
-
-用法：
-
-```bash
-python3 scripts/rebar_grade.py --inputs scan/*_detail.json --out legend.json --md-out legend.md
-python3 scripts/project_aggregate.py --inputs structural/*.json --legend legend.json --out aggregate.json --md-out aggregate.md
-python3 scripts/drawing_relation.py --inputs structural/*.json --out relation.json
-python3 scripts/cad_axis_networks.py --inputs scan/*_detail.json --out axis_networks.json
-```
-
-钢筋牌号这块有三条硬规矩：
-
-1. **牌号只能来自本批图纸的说明表**。本批没有说明表就全部保持 `unknown`，不套国标默认值——不同项目图例可能自定义。
-2. **映射不跨项目串用**。聚合层比对图纸名，来源不符直接弃用并记 `legend_source_mismatch`。跨项目套用会得出「全部 HRB400」这种看着完整实则错误的结果，比 unknown 更危险。
-3. **两种依据分层**：说明表直接定义（`direct`，可核对原文）与按 CAD 字体尾号外推（`bridged`，`%%132` 与 `U+E532` 同尾号）。外推只到 `inferred_candidate`，表格里逐行标注，不混为一谈。
-
-牌号回填需要 `detail` 产物（说明表是整段文字，只在 `text_records` 里）；只给 `structural` 时映射为空，会明确报出来而不是静默给 unknown。
+多图聚合、轴网核对和钢筋牌号回填按需读取 `packs/cross-drawing-aggregation/SKILL.md`。硬边界不变：牌号只来自本批图纸说明表，映射不跨项目；`bridged` 推断不得混作 `direct` 原文证据。
 
 ## 结构算量的归属
 
 原 `cad-file-reader` 内的梁、板、柱、墙、楼梯、洞口、预制底板、混凝土分账和结构算量流水线已迁移到：
 
-- `tujian-suanliang`（本机目录 `shangwu-suanliang`）
+- `tujian-suanliang`
 - 统一入口：在土建算量技能目录执行其 `run_qty.sh` 命令（高级模式或流水线模式）。
 - 迁移脚本仍通过 `CAD_SKILL_DIR` 调用本技能的 `cad_scan`/`cad_interpret` 识图底座。
 
@@ -396,14 +181,5 @@ python3 scripts/cad_axis_networks.py --inputs scan/*_detail.json --out axis_netw
 
 ## 授权与保留
 
-本技能以 **CC-BY-NC-SA-4.0** 授权给公众：可自由使用与改造，但**仅限非商业用途**（个人学习、研究与非营利使用）；改造后若公开发布，须以相同条款授权。
+CC-BY-NC-SA-4.0，仅限非商业用途。商业使用（含承接造价/算量咨询业务）须另行取得作者书面授权；作者保留全部商业权利（商业使用、再发布、封装收费、授予第三方商业授权）。条款全文见 `LICENSE.md`。
 
-企业、机构或将本技能用于经营性项目（如承接工程造价、算量咨询业务）的商业使用，需另行取得作者书面授权。
-
-作者（lis）作为著作权人，不受上述许可限制，明确保留以下权利：
-
-1. 将本作品用于任何商业目的；
-2. 改造、再发布、封装为收费商品或服务；
-3. 向第三方授予商业使用授权。
-
-完整许可文本见 `LICENSE.md`。

@@ -36,6 +36,7 @@ except Exception:
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 from collections import defaultdict
@@ -707,8 +708,12 @@ def member_merge(members: list[dict], parsed_sections: list[dict],
             "explicit_length_m": 0.0, "categories": set(), "systems": set(),
             "source_status": set(), "source_review_reasons": set(),
             "unnumbered": False,
+            "x": None, "y": None, "z": None, "rotation": None,
         })
         rec["members"].append(m)
+        for coord in ("x", "y", "z", "rotation"):
+            if rec[coord] is None and m.get(coord) is not None:
+                rec[coord] = m.get(coord)
         if code.startswith("<unnumbered-"):
             rec["unnumbered"] = True
         if m.get("category"):
@@ -814,6 +819,11 @@ def member_merge(members: list[dict], parsed_sections: list[dict],
             "sections": sections_out,
             "explicit_length_m": length_m,
             "length_evidence": rec["length_evidence"],
+            "x": rec["x"], "y": rec["y"], "z": rec["z"],
+            "rotation": rec["rotation"],
+            "coord_unit": "mm",
+            "location_status": ("provided" if rec["x"] is not None and rec["y"] is not None
+                                else "missing"),
             "tonnage_t": tonnage,
             "tonnage_basis": tonnage_basis,
             "conflicts": conflicts,
@@ -835,7 +845,9 @@ def member_merge(members: list[dict], parsed_sections: list[dict],
     return rows, review
 
 
-def grade_tonnage_rows(merged: list[dict], total_t: list[float]) -> list[dict]:
+def grade_tonnage_rows(merged: list[dict], total_t: list[float],
+                       total_basis: str = "allocated_estimate",
+                       plate_total: list[float] | None = None) -> list[dict]:
     """把构件级牌号证据汇成分档吨位；无直接证据时余量归 unknown_grade。"""
     buckets: dict[str, dict] = {}
     direct_by_grade: dict[str, list[list[float]]] = defaultdict(list)
@@ -845,8 +857,6 @@ def grade_tonnage_rows(merged: list[dict], total_t: list[float]) -> list[dict]:
         elif row.get("tonnage_t") and row.get("grade") == "unknown_grade":
             direct_by_grade["unknown_grade"].append(row["tonnage_t"])
 
-    direct_all_lo = sum(b[0] for bands in direct_by_grade.values() for b in bands)
-    direct_all_hi = sum(b[1] for bands in direct_by_grade.values() for b in bands)
     for grade in (*KNOWN_GRADES, "unknown_grade"):
         bands = direct_by_grade.get(grade)
         lo = hi = 0.0
@@ -861,14 +871,32 @@ def grade_tonnage_rows(merged: list[dict], total_t: list[float]) -> list[dict]:
         buckets[grade] = {"grade": grade, "tonnage_t": [round(lo, 4), round(hi, 4)],
                           "allocation": basis}
 
-    if direct_by_grade and total_t:
-        residual_lo = max(0.0, float(total_t[0]) - direct_all_hi)
-        residual_hi = max(0.0, float(total_t[1]) - direct_all_lo)
-        old = buckets["unknown_grade"]["tonnage_t"]
-        buckets["unknown_grade"]["tonnage_t"] = [
-            round(old[0] + residual_lo, 4), round(old[1] + residual_hi, 4)]
+    # 余量只算一次：逐根口径直接对未分牌号构件求和；分摊口径才用总吨位相减。
+    known_lo = sum(buckets[g]["tonnage_t"][0] for g in KNOWN_GRADES)
+    known_hi = sum(buckets[g]["tonnage_t"][1] for g in KNOWN_GRADES)
+    if total_basis == "member_level":
+        unknown_rows = [r["tonnage_t"] for r in merged
+                        if r.get("tonnage_t") and r.get("grade") not in KNOWN_GRADES]
+        plate = plate_total or [0.0, 0.0]
+        lo = sum(float(b[0]) for b in unknown_rows) + float(plate[0])
+        hi = sum(float(b[1]) for b in unknown_rows) + float(plate[1])
+        buckets["unknown_grade"]["tonnage_t"] = [round(lo, 2), round(hi, 2)]
+        if unknown_rows and (plate[0] or plate[1]):
+            basis_text = "逐根未分牌号构件求和 + 节点板无牌号证据"
+        elif unknown_rows:
+            basis_text = "逐根未分牌号构件求和"
+        elif plate[0] or plate[1]:
+            basis_text = "节点板无牌号证据"
+        else:
+            basis_text = "全部构件已有牌号证据"
+        buckets["unknown_grade"]["allocation"] = basis_text
+    elif total_t:
+        lo = max(0.0, float(total_t[0]) - known_hi)
+        hi = max(0.0, float(total_t[1]) - known_lo)
+        buckets["unknown_grade"]["tonnage_t"] = [round(lo, 2), round(hi, 2)]
         buckets["unknown_grade"]["allocation"] = (
-            "构件证据 + 总吨位未归并余量" if old[1] > 0 else "总吨位未归并余量")
+            "总吨位扣除已分牌号余量" if (known_lo or known_hi)
+            else "总吨位全部未分牌号")
 
     out = [buckets[g] for g in KNOWN_GRADES if buckets[g]["tonnage_t"] != [0, 0]]
     unknown = buckets["unknown_grade"]
@@ -944,9 +972,319 @@ def _validate_contract(data) -> dict:
     return data
 
 
+# ---------------------------------------------------------------- 前置/体检
+
+def _first_existing_skill(*names: str) -> str | None:
+    """在常见技能安装根目录找技能目录（兼容带 __skillhub 等后缀）。"""
+    roots = [
+        Path.home() / ".codex" / "skills",
+        Path.home() / ".workbuddy" / "skills",
+        Path.cwd() / "skills",
+    ]
+    for root in roots:
+        for name in names:
+            direct = root / name
+            if direct.is_dir():
+                return str(direct)
+            if root.is_dir():
+                for hit in sorted(root.glob(name + "*")):
+                    if hit.is_dir():
+                        return str(hit)
+    return None
+
+
+def prerequisites_status() -> dict:
+    """探测正式识图链路的前置依赖；只读，不改环境。"""
+    cad = os.environ.get("CAD_FILE_READER_HOME") or _first_existing_skill("cad-file-reader")
+    bus = os.environ.get("SKILLBUS_HOME") or _first_existing_skill("lis-skill-bus")
+    missing = []
+    if not cad:
+        missing.append("cad-file-reader>=0.39.2（含 packs/steel-geometry）")
+    if not bus:
+        missing.append("lis-skill-bus>=0.1.9")
+    return {
+        "cad_file_reader": {"found": bool(cad), "path": cad},
+        "lis_skill_bus": {"found": bool(bus), "path": bus},
+        "ready_for_formal_pipeline": bool(cad and bus),
+        "scope": "仅正式识图链路（cad-file-reader -> lis-skill-bus -> 本技能）需要；"
+                 "直接消费已有 *.steel.json 计算不受影响。",
+        "install_hint": ("缺 " + "、".join(missing) + "；未装齐前无法从 DWG 出数，"
+                         "只能用已有契约 JSON 计算。") if missing else None,
+    }
+
+
+def format_prerequisites(st: dict) -> str:
+    cad = "✅" if st["cad_file_reader"]["found"] else "❌"
+    bus = "✅" if st["lis_skill_bus"]["found"] else "❌"
+    lines = [
+        "正式识图链路前置探测",
+        f"- cad-file-reader：{cad} {st['cad_file_reader']['path'] or '未找到'}",
+        f"- lis-skill-bus：{bus} {st['lis_skill_bus']['path'] or '未找到'}",
+        f"- 正式链路可用：{'是' if st['ready_for_formal_pipeline'] else '否'}",
+    ]
+    if st.get("install_hint"):
+        lines.append(f"- 处理：{st['install_hint']}")
+    return "\n".join(lines)
+
+
+def _load_json(path: str) -> tuple[dict | None, str | None]:
+    try:
+        with Path(path).open(encoding="utf-8") as f:
+            return json.load(f), None
+    except FileNotFoundError:
+        return None, f"输入文件不存在：{path}"
+    except json.JSONDecodeError as exc:
+        return None, f"非契约 JSON：{path} 解析失败（第 {exc.lineno} 行，第 {exc.colno} 列）"
+
+
+def contract_health(data) -> dict:
+    """契约体检：只诊断字段、截面匹配和仅计数项，不出吨位、不写文件。"""
+    report: dict = {
+        "schema": "cad-steel-contract-health/v1",
+        "status": "ok",
+        "errors": [],
+        "warnings": [],
+        "counts": {},
+        "length": {},
+        "sections": [],
+        "members": {"total": 0, "matched": 0, "unmatched": [], "no_length": [],
+                    "no_section": []},
+        "dependencies": prerequisites_status(),
+    }
+    if not isinstance(data, dict):
+        report["status"] = "error"
+        report["errors"].append("顶层必须是 JSON object")
+        return report
+    if data.get("schema") != INPUT_SCHEMA:
+        report["status"] = "error"
+        report["errors"].append(
+            f"schema 必须是 {INPUT_SCHEMA}，当前为 {data.get('schema') or '<missing>'}")
+        return report
+
+    for key in ("sections", "members", "steel_geometry"):
+        value = data.get(key)
+        if value is None:
+            report["errors"].append(f"缺少 {key}[] 字段")
+        elif not isinstance(value, list):
+            report["errors"].append(f"{key}[] 必须是数组")
+        else:
+            for i, item in enumerate(value):
+                if not isinstance(item, dict):
+                    report["errors"].append(f"{key}[{i}] 必须是 object")
+    for key in ("materials", "connections", "finishes"):
+        value = data.get(key)
+        if value is not None and not isinstance(value, list):
+            report["errors"].append(f"{key}[] 必须是数组")
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                if not isinstance(item, dict):
+                    report["errors"].append(f"{key}[{i}] 必须是 object")
+    if report["errors"]:
+        report["status"] = "error"
+        return report
+
+    sections = data.get("sections") or []
+    members = data.get("members") or []
+    geometry = data.get("steel_geometry") or []
+    connections = data.get("connections") or []
+    finishes = data.get("finishes") or []
+    materials = data.get("materials") or []
+    if not (sections or members or geometry):
+        report["status"] = "error"
+        report["errors"].append("sections/members/steel_geometry 全部为空，无法计算")
+        return report
+
+    parsed = [parse_section(r) for r in sections]
+    for p in parsed:
+        report["sections"].append({
+            "text": p["text"], "section_type": p["section_type"],
+            "kg_m": p["kg_m"],
+            "status": "tonnage" if p["kg_m"] > 0 else "count_only",
+            "note": p["note"],
+        })
+    only = [x for x in report["sections"] if x["status"] == "count_only"]
+    if only:
+        report["warnings"].append(
+            f"{len(only)} 条截面只能计数、不进吨位："
+            + "、".join(f"{x['text']}（{x['note']}）" for x in only[:10])
+            + ("…" if len(only) > 10 else ""))
+
+    merged, merge_review = member_merge(members, parsed, sections, materials)
+    report["members"]["total"] = len(members)
+    for r in merged:
+        if r["sections"]:
+            report["members"]["matched"] += r["instance_count"]
+        else:
+            report["members"]["no_section"].append(r["code"])
+            report["members"]["unmatched"].append({
+                "code": r["code"], "instances": r["instance_count"],
+                "reason": "未匹配到任何截面标注",
+            })
+        if not r["explicit_length_m"]:
+            report["members"]["no_length"].append(r["code"])
+    if report["members"]["no_section"]:
+        report["warnings"].append(
+            f"{len(report['members']['no_section'])} 个构件编号未匹配到截面："
+            + "、".join(report["members"]["no_section"][:10])
+            + ("…" if len(report["members"]["no_section"]) > 10 else ""))
+    if report["members"]["no_length"]:
+        report["warnings"].append(
+            f"{len(report['members']['no_length'])} 个构件编号无显式长度："
+            + "、".join(report["members"]["no_length"][:10])
+            + ("…" if len(report["members"]["no_length"]) > 10 else ""))
+
+    expl = explicit_lengths(members)
+    layer_len = {}
+    for item in geometry:
+        layer = str(item.get("layer") or "<no-layer>")
+        geom = item.get("geometry")
+        vals = []
+        if isinstance(geom, dict):
+            vals = [_f(geom.get(k)) for k in ("length", "length_mm")]
+        elif isinstance(geom, (list, tuple)) and len(geom) >= 4:
+            vals = [((_f(geom[2]) - _f(geom[0])) ** 2
+                     + (_f(geom[3]) - _f(geom[1])) ** 2) ** 0.5]
+        for v in vals:
+            if v > 0:
+                layer_len[layer] = layer_len.get(layer, 0.0) + v / 1000.0
+    report["length"] = {
+        "explicit_count": len(expl),
+        "explicit_total_m": round(sum(expl.values()), 3),
+        "drawn_total_m": round(sum(layer_len.values()), 3),
+        "basis": ("explicit" if expl else ("drawn" if layer_len else "none")),
+        "explicit_items": dict(sorted(expl.items(), key=lambda kv: -kv[1])[:20]),
+    }
+    if report["length"]["basis"] == "none":
+        report["warnings"].append("无任何长度证据：只能出截面谱，不出吨位")
+
+    report["counts"] = {
+        "sections": len(sections), "sections_tonnage": len(parsed) - len(only),
+        "sections_count_only": len(only), "members": len(members),
+        "member_codes": len(merged), "steel_geometry": len(geometry),
+        "materials": len(materials), "connections": len(connections),
+        "finishes": len(finishes), "merge_review": len(merge_review),
+    }
+    if not connections:
+        report["warnings"].append("connections[] 为空：不做连接计数（输入无证据，不是未实现）")
+    if not finishes:
+        report["warnings"].append("finishes[] 为空：不做涂装面积（输入无证据，不是未实现）")
+    if not geometry:
+        report["warnings"].append("steel_geometry[] 为空：图面线段长度口径不可用")
+
+    report["status"] = "warn" if report["warnings"] else "ok"
+    return report
+
+
+def format_health(report: dict) -> str:
+    label = {"ok": "✅ 契约可计算", "warn": "⚠️ 契约可计算，但有需复核项",
+             "error": "❌ 契约不可计算"}[report["status"]]
+    lines = [f"契约体检：{label}"]
+    if report["errors"]:
+        lines.append("错误：")
+        lines.extend(f"- {x}" for x in report["errors"])
+    counts = report.get("counts") or {}
+    if counts:
+        lines.append(
+            "规模：截面 {sections}（可计米重 {sections_tonnage}、仅计数 {sections_count_only}）；"
+            "构件 {members} 条 / 归并 {member_codes} 个编号；"
+            "steel_geometry {steel_geometry} 段；materials {materials}；"
+            "connections {connections}；finishes {finishes}".format(**counts))
+        length = report.get("length") or {}
+        if length:
+            lines.append(
+                f"长度：{length['basis']}（显式 {length['explicit_count']} 条 / "
+                f"{length['explicit_total_m']} m；图面线段 {length['drawn_total_m']} m）")
+    if report.get("warnings"):
+        lines.append("需复核：")
+        lines.extend(f"- {x}" for x in report["warnings"])
+    deps = report.get("dependencies") or {}
+    if deps:
+        lines.append(
+            "前置：cad-file-reader {c} / lis-skill-bus {b}（只影响正式识图链路）".format(
+                c="✅" if deps.get("cad_file_reader", {}).get("found") else "❌",
+                b="✅" if deps.get("lis_skill_bus", {}).get("found") else "❌"))
+    return "\n".join(lines)
+
+
+def validate_path(path: str) -> dict:
+    data, err = _load_json(path)
+    if err:
+        return {
+            "schema": "cad-steel-contract-health/v1", "status": "error",
+            "errors": [err], "warnings": [], "counts": {}, "length": {},
+            "sections": [], "members": {"total": 0, "matched": 0, "unmatched": [],
+                                        "no_length": [], "no_section": []},
+            "dependencies": prerequisites_status(),
+        }
+    return contract_health(data)
+
+
+def member_level_total(merged: list[dict]) -> tuple[list[float], str]:
+    """逐根台账求和的可用性判定；不完整时返回空带和原因。"""
+    if not merged:
+        return [], "无构件归并台账"
+    missing_length = [r["code"] for r in merged if not r.get("explicit_length_m")]
+    if missing_length:
+        return [], f"{len(missing_length)} 个构件编号缺显式长度，逐根口径不完整"
+    missing_tonnage = [r["code"] for r in merged if not r.get("tonnage_t")]
+    if missing_tonnage:
+        return [], f"{len(missing_tonnage)} 个构件编号缺截面映射或米重，逐根口径不完整"
+    multi = [r["code"] for r in merged
+             if len([s for s in r.get("sections", []) if s.get("kg_m", 0) > 0]) != 1]
+    if multi:
+        return [], f"{len(multi)} 个构件编号有多截面冲突，长度归属不确定"
+    lo = sum(float(r["tonnage_t"][0]) for r in merged)
+    hi = sum(float(r["tonnage_t"][1]) for r in merged)
+    return [round(lo, 2), round(hi, 2)], "逐根构件台账求和（推荐口径）"
+
+
+def length_scenario_rows(spec_rows: list[dict], lengths: list[float]) -> list[dict]:
+    """按统一构件长度给吨位敏感性场景；场景值不是结果。"""
+    rows = []
+    for length in lengths or []:
+        try:
+            length_m = float(length)
+        except (TypeError, ValueError):
+            continue
+        if length_m <= 0:
+            continue
+        lo = sum(r["kg_m"] * r["count"] * length_m * 0.85 / 1000.0
+                 for r in spec_rows if r["kg_m"] > 0)
+        hi = sum(r["kg_m"] * r["count"] * length_m * 1.15 / 1000.0
+                 for r in spec_rows if r["kg_m"] > 0)
+        rows.append({
+            "length_m": round(length_m, 3),
+            "total_t_band": [round(lo, 2), round(hi, 2)],
+            "basis": "每个截面标注按同一构件长度 L 估算；场景值，不替代缺长度证据的结论",
+        })
+    return rows
+
+
+def allowance_advice(total_band: list[float]) -> dict:
+    """吊装/运输用建议附加系数；不并入 total_t。"""
+    items = [
+        {"item": "连接件/节点板/加劲肋", "rate": 0.03,
+         "note": "本技能只在显式尺寸证据下计节点板；未计量部分可加 3%"},
+        {"item": "涂装/防火层", "rate": 0.05,
+         "note": "吊装/运输需要总重时叠加 5%"},
+        {"item": "下料余量/焊材/包装", "rate": 0.08,
+         "note": "综合附加 8%，不与前两项简单叠加"},
+    ]
+    ref = []
+    if total_band:
+        ref = [round(total_band[0] * 1.03, 2), round(total_band[1] * 1.08, 2)]
+    return {
+        "included_in_total": False,
+        "items": items,
+        "hoisting_reference_t": ref,
+        "note": "建议系数，不是规范值；正式重量仍以深化翻样为准。",
+    }
+
+
 # ---------------------------------------------------------------- 汇总
 
-def build(steel_path: str, out_prefix: str) -> Path:
+def build(steel_path: str, out_prefix: str,
+          length_scenarios: list[float] | None = None) -> Path:
     steel_path_obj = Path(steel_path)
     try:
         with steel_path_obj.open(encoding="utf-8") as f:
@@ -1001,10 +1339,10 @@ def build(steel_path: str, out_prefix: str) -> Path:
         for k, v in sorted(spec.items(), key=lambda kv: (-kv[0][2], kv[0][1]))
     ]
 
-    # 吨位：把总长度按「截面米重加权」分摊到有米重的截面（权重=米重×次数），
-    # 这在缺「每根构件↔截面」映射时是对总量最不坏的分摊假设。
+    # 吨位 A（草稿分摊）：把总长度按「截面米重加权」分摊到有米重的截面。
+    # 这是在缺「每根构件↔截面」映射时退而求其次的口径，字段名必须带 allocated。
     rows: list[dict] = []
-    total_lo = total_hi = 0.0
+    alloc_lo = alloc_hi = 0.0
     weight_sum = sum(r["kg_m"] * r["count"] for r in spec_rows if r["kg_m"] > 0)
     if length_used > 0 and weight_sum > 0:
         for r in spec_rows:
@@ -1014,8 +1352,8 @@ def build(steel_path: str, out_prefix: str) -> Path:
             length_m = length_used * share
             t_lo = r["kg_m"] * length_m * 0.85 / 1000.0   # -15%
             t_hi = r["kg_m"] * length_m * 1.15 / 1000.0   # +15%
-            total_lo += t_lo
-            total_hi += t_hi
+            alloc_lo += t_lo
+            alloc_hi += t_hi
             rows.append({
                 "截面类型": r["section_type"], "截面": r["text"],
                 "标注次数": r["count"], "米重kg/m": r["kg_m"],
@@ -1023,14 +1361,39 @@ def build(steel_path: str, out_prefix: str) -> Path:
                 "吨位带t": [round(t_lo, 2), round(t_hi, 2)],
             })
     if rows:
-        total_lo, total_hi = round(total_lo, 2), round(total_hi, 2)
+        alloc_lo, alloc_hi = round(alloc_lo, 2), round(alloc_hi, 2)
     else:
-        total_lo = total_hi = 0.0
+        alloc_lo = alloc_hi = 0.0
     if plate_rows:
-        total_lo = round(total_lo + plate_total[0], 6)
-        total_hi = round(total_hi + plate_total[1], 6)
+        alloc_lo = round(alloc_lo + plate_total[0], 2)
+        alloc_hi = round(alloc_hi + plate_total[1], 2)
+    allocated_band = [alloc_lo, alloc_hi] if (rows or plate_rows) else []
 
-    grade_rows = grade_tonnage_rows(merged, [total_lo, total_hi] if rows else [])
+    # 吨位 B（推荐）：逐根台账求和。只有全部构件都有显式长度且单截面映射
+    # 才算完整；否则退回分摊口径，并在报告中写明原因。
+    member_band, member_note = member_level_total(merged)
+    if member_band and plate_rows:
+        member_band = [round(member_band[0] + plate_total[0], 2),
+                       round(member_band[1] + plate_total[1], 2)]
+    if member_band:
+        total_band, total_basis = member_band, "member_level"
+    elif allocated_band:
+        total_band, total_basis = allocated_band, "allocated_estimate"
+    else:
+        total_band, total_basis = [], "none"
+
+    grade_rows = grade_tonnage_rows(merged, total_band, total_basis, plate_total)
+    scenarios = length_scenario_rows(spec_rows, length_scenarios or [])
+    pre = prerequisites_status()
+    closure = steel.get("geometry_closure")
+    if isinstance(closure, dict):
+        closure_check = {"status": "provided", "source": "cad-file-reader"}
+        closure_check.update(closure)
+    else:
+        closure_check = {
+            "status": "not_provided",
+            "note": "圆/线段个数闭合校核须由 cad-file-reader 识图层提供；本技能不做识图。",
+        }
 
     out = {
         "schema": SCHEMA,
@@ -1061,7 +1424,23 @@ def build(steel_path: str, out_prefix: str) -> Path:
         "rows": rows,
         "spec_rows": spec_rows,
         "only_count": [p["text"] for p in only_count],
-        "total_t": [total_lo, total_hi] if rows or plate_rows else [],
+        "total_t": total_band,
+        "total_basis": total_basis,
+        "total_t_member_level": member_band or [],
+        "total_t_allocated_estimate": allocated_band,
+        "member_level_note": member_note,
+        "length_scenarios": scenarios,
+        "allowance_advice": allowance_advice(total_band),
+        "geometry_closure_check": closure_check,
+        "prerequisites": pre,
+        "input_evidence": {
+            "sections": len(sections),
+            "members": len(members),
+            "steel_geometry": len(steel.get("steel_geometry") or []),
+            "materials": len(steel.get("materials") or []),
+            "connections": len(connections),
+            "finishes": len(finishes),
+        },
         "summary": {
             "截面标注数": len(parsed),
             "可计米重截面数": len(usable),
@@ -1070,7 +1449,8 @@ def build(steel_path: str, out_prefix: str) -> Path:
             "构件归并数": len(merged),
             "归并复核数": len(merge_review),
             "牌号分档数": len(grade_rows),
-            "总吨位带t": [total_lo, total_hi] if rows or plate_rows else [],
+            "总吨位带t": total_band,
+            "总吨位口径": total_basis,
         },
     }
     _render(out, Path(steel_path).stem, out_prefix)
@@ -1088,7 +1468,21 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
     md.write(f"# {title}（钢结构吨位估算）\n\n")
     md.write("> **口径声明**：估算带（±15%），final_quantity=false；米重为截面几何公式近似"
              "（不含圆角，H 型偏低 1~2%、冷弯 C/Z 偏低 2~5%）；不替代深化设计、翻样、下料与结算。\n")
-    md.write(f"> 长度口径：**{out['length_note']}**\n\n")
+    md.write(f"> 长度口径：**{out['length_note']}**\n")
+    pre = out.get("prerequisites") or {}
+    if pre.get("ready_for_formal_pipeline"):
+        md.write("> 前置探测：cad-file-reader ✅ / lis-skill-bus ✅（正式识图链路可用）\n")
+    else:
+        md.write("> 前置探测：cad-file-reader {} / lis-skill-bus {}；正式识图链路不可用。"
+                 "本报告由已有契约计算，不受影响。\n".format(
+                     "✅" if pre.get("cad_file_reader", {}).get("found") else "❌",
+                     "✅" if pre.get("lis_skill_bus", {}).get("found") else "❌"))
+        if pre.get("install_hint"):
+            md.write(f"> {pre['install_hint']}\n")
+    ev = out.get("input_evidence") or {}
+    if ev and not ev.get("steel_geometry"):
+        md.write("> 输入无证据：`steel_geometry[]` 为空，图面线段长度口径不可用。\n")
+    md.write("\n")
     md.write(f"- 截面标注 {s['截面标注数']} 条（可计米重 {s['可计米重截面数']}、"
              f"仅计数 {s['仅计数截面数']}）；构件标注 {s['构件标注数']} 条\n")
     if out["duplicate_members"]:
@@ -1096,20 +1490,57 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
             f"{r['code']}×{r['count']}" for r in out["duplicate_members"][:20])
         md.write(f"- ⚠️ 重复构件编号/名称：{shown}（需人工确认重复标注与实例数）\n")
     if out["total_t"]:
-        md.write(f"- **总吨位带：{out['total_t'][0]}~{out['total_t'][1]} t**"
-                 f"（长度 {out['length_used_m']} m 按米重×次数加权分摊）\n\n")
-        md.write("## 分截面吨位\n\n| 截面类型 | 截面 | 标注次数 | 米重kg/m | 分摊长度m | 吨位t带 |\n|---|---|---|---|---|---|\n")
-        for r in out["rows"]:
-            md.write(f"| {r['截面类型']} | {r['截面']} | {r['标注次数']} | {r['米重kg/m']} "
-                     f"| {r['分摊长度m']} | {r['吨位带t'][0]}~{r['吨位带t'][1]} |\n")
+        basis_label = {
+            "member_level": "逐根构件台账求和（推荐口径）",
+            "allocated_estimate": "米重×标注次数分摊（草稿口径，非逐根）",
+            "none": "无",
+        }.get(out["total_basis"], out["total_basis"])
+        total_label = ("总吨位带（推荐）" if out["total_basis"] == "member_level"
+                       else "总吨位带（分摊草稿，不是答案）")
+        md.write(f"- **{total_label}：{out['total_t'][0]}~{out['total_t'][1]} t**，"
+                 f"口径：{basis_label}\n")
+        if (out["total_basis"] == "member_level"
+                and out.get("total_t_allocated_estimate")):
+            a = out["total_t_allocated_estimate"]
+            md.write(f"- 分摊口径参考：{a[0]}~{a[1]} t"
+                     "（字段 `total_t_allocated_estimate`，仅供草稿对照，不作推荐值）\n")
+        if out["total_basis"] == "allocated_estimate":
+            md.write(f"- ⚠️ 未能建立完整逐根台账：{out.get('member_level_note') or '缺显式长度或截面映射'}；"
+                     "总吨位为分摊草稿，构件级净量需人工复核\n")
         md.write("\n")
+        if out["rows"]:
+            md.write("## 分截面分摊（草稿明细，非逐根台账）\n\n"
+                     "| 截面类型 | 截面 | 标注次数 | 米重kg/m | 分摊长度m | 吨位t带 |\n"
+                     "|---|---|---|---|---|---|\n")
+            for r in out["rows"]:
+                md.write(f"| {r['截面类型']} | {r['截面']} | {r['标注次数']} | {r['米重kg/m']} "
+                         f"| {r['分摊长度m']} | {r['吨位带t'][0]}~{r['吨位带t'][1]} |\n")
+            md.write("\n")
     else:
         md.write("- ⚠️ 无长度证据或无可计米重截面：只出截面谱，不出吨位\n\n")
+    if out.get("length_scenarios"):
+        md.write("## 长度敏感性场景（不是结果）\n\n"
+                 "每个截面标注按同一构件长度 L 估算，用于缺长度证据时对比选值。\n\n"
+                 "| 构件长度m | 吨位t带 | 依据 |\n|---:|---|---|\n")
+        for r in out["length_scenarios"]:
+            md.write(f"| {r['length_m']} | {r['total_t_band'][0]}~{r['total_t_band'][1]} "
+                     f"| {r['basis']} |\n")
+        md.write("\n")
+    allow = out.get("allowance_advice") or {}
+    if allow.get("hoisting_reference_t"):
+        md.write("## 吊装/运输建议附加（不并入总吨位）\n\n"
+                 "| 项目 | 建议系数 | 说明 |\n|---|---:|---|\n")
+        for r in allow["items"]:
+            md.write(f"| {r['item']} | {int(r['rate'] * 100)}% | {r['note']} |\n")
+        ref = allow["hoisting_reference_t"]
+        md.write(f"\n- 参照总重（{allow['note']}）：**{ref[0]}~{ref[1]} t**\n\n")
     md.write("\n## 连接清单\n\n| 连接类别 | 标注次数 | 数量口径 | 计数依据 | 状态 |\n|---|---:|---|---|---|\n")
     for r in out["connection_summary"]:
         md.write(
             f"| {r['label']} | {r['label_count']} | {r['count'] if r['count'] is not None else '待复核'} "
             f"| {r['count_basis']} | {r['quantity_status']} |\n")
+    if not (out.get("input_evidence") or {}).get("connections"):
+        md.write("\n> 输入无证据：`connections[]` 为空，未做连接计数（不是技能未实现）。\n")
     if out["connection_ledger"]:
         md.write("\n### 连接台账\n\n| 类别 | 原文 | 单条计数 | 计数依据 | 状态 |\n|---|---|---:|---|---|\n")
         for r in out["connection_ledger"]:
@@ -1127,6 +1558,8 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
         md.write(
             f"| {r['label']} | {r['candidate_count']} | {band} | {r['area_status']} "
             f"| {r['basis']} | {r['fire_rating'] if r['fire_rating'] is not None else 'unavailable'} |\n")
+    if not (out.get("input_evidence") or {}).get("finishes"):
+        md.write("\n> 输入无证据：`finishes[]` 为空，未做涂装面积（不是技能未实现，防火等级不推断）。\n\n")
     if out["finish_ledger"]:
         md.write("\n### 涂装台账\n\n| 类别 | 原文 | 面积m²带 | 状态 | 依据 |\n|---|---|---|---|---|\n")
         for r in out["finish_ledger"]:
@@ -1152,15 +1585,16 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
         md.write(f"\n（以下 {len(out['only_count'])} 条标注未进吨位：{'、'.join(out['only_count'][:20])}"
                  f"{'…' if len(out['only_count']) > 20 else ''}）\n")
     if out["member_merge"]:
-        md.write("\n## 构件归并台账\n\n| 编号 | 实例 | 牌号 | 类别 | 系统 | 截面 | 显式长度m | 吨位t带 | 复核 |\n|---|---:|---|---|---|---|---:|---|---|\n")
+        md.write("\n## 构件归并台账\n\n| 编号 | 实例 | 牌号 | 类别 | 系统 | 截面 | 显式长度m | 吨位t带 | 坐标x,y(mm) | 复核 |\n|---|---:|---|---|---|---|---:|---|---|---|\n")
         for r in out["member_merge"]:
             review_text = "；".join(r["conflicts"] + r["review_reasons"])
+            coord = (f"{r['x']},{r['y']}" if r.get("location_status") == "provided" else "-")
             md.write(
                 f"| {r['code']} | {r['instance_count']} | {r['grade']} | "
                 f"{'+'.join(r['categories']) or '-'} | {'+'.join(r['systems']) or '-'} | "
                 f"{'+'.join(r['section_texts']) or '-'} | {r['explicit_length_m']} | "
                 f"{r['tonnage_t'][0] if r['tonnage_t'] else '-'}~"
-                f"{r['tonnage_t'][1] if r['tonnage_t'] else '-'} | {review_text or '-'} |\n")
+                f"{r['tonnage_t'][1] if r['tonnage_t'] else '-'} | {coord} | {review_text or '-'} |\n")
     if out["review_items"]:
         md.write("\n## 复核清单\n\n")
         for r in out["review_items"][:50]:
@@ -1175,8 +1609,18 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
         w = csv.writer(f)
         w.writerow(["口径", "数值", "说明"])
         if out["total_t"]:
-            w.writerow(["总吨位带t", f"{out['total_t'][0]}~{out['total_t'][1]}",
-                        f"长度口径：{out['length_note']}"])
+            basis_label = {"member_level": "逐根构件台账求和（推荐）",
+                           "allocated_estimate": "米重×标注次数分摊（草稿）",
+                           "none": "无"}.get(out["total_basis"], out["total_basis"])
+            total_label = ("总吨位带t（推荐）" if out["total_basis"] == "member_level"
+                           else "总吨位带t（分摊草稿）")
+            w.writerow([total_label, f"{out['total_t'][0]}~{out['total_t'][1]}",
+                        f"口径：{basis_label}；长度口径：{out['length_note']}"])
+            if (out["total_basis"] == "member_level"
+                    and out.get("total_t_allocated_estimate")):
+                a = out["total_t_allocated_estimate"]
+                w.writerow(["总吨位带t（分摊草稿）", f"{a[0]}~{a[1]}",
+                            "字段 total_t_allocated_estimate，仅供对照，不作推荐值"])
             if out["rows"]:
                 for r in out["rows"]:
                     w.writerow([f"吨位-{r['截面']}", f"{r['吨位带t'][0]}~{r['吨位带t'][1]}",
@@ -1186,10 +1630,19 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
                             f"{out['connection_plate_total_t'][0]}~{out['connection_plate_total_t'][1]}",
                             "仅含厚×宽×长或板厚×面积证据的节点板"])
         elif out["connection_plate_total_t"]:
-            w.writerow(["总吨位带t", f"{out['total_t'][0]}~{out['total_t'][1]}",
+            w.writerow(["总吨位带t（仅节点板）",
+                        f"{out['connection_plate_total_t'][0]}~{out['connection_plate_total_t'][1]}",
                         "无杆件长度证据；总吨位仅含连接节点板"])
         else:
             w.writerow(["总吨位", "", "无长度证据或无可计米重截面，只出截面谱"])
+        for r in out.get("length_scenarios") or []:
+            w.writerow([f"长度场景-{r['length_m']}m",
+                        f"{r['total_t_band'][0]}~{r['total_t_band'][1]}", r["basis"]])
+        allow = out.get("allowance_advice") or {}
+        if allow.get("hoisting_reference_t"):
+            ref = allow["hoisting_reference_t"]
+            w.writerow(["吊装/运输参照总重t（不含在总吨位）", f"{ref[0]}~{ref[1]}",
+                        allow["note"]])
         for r in out["connection_summary"]:
             w.writerow([f"连接-{r['label']}",
                         r["count"] if r["count"] is not None else "待复核",
@@ -1229,11 +1682,42 @@ def main() -> None:
     raw = sys.argv[1:]
     ap = argparse.ArgumentParser(
         description="Steel tonnage estimate from cad_steel_geometry output")
-    ap.add_argument("--steel", required=True,
-                    help="cad_steel_geometry 产物 *.steel.json")
-    ap.add_argument("--out-prefix", required=True)
+    ap.add_argument("contract", nargs="?",
+                    help="契约 JSON 路径（--validate 时可作为位置参数）")
+    ap.add_argument("--steel",
+                    help="cad_steel_geometry 产物 *.steel.json（计算模式必填）")
+    ap.add_argument("--out-prefix", help="输出前缀（计算模式必填）")
+    ap.add_argument("--validate", action="store_true",
+                    help="只体检输入契约：缺字段、未匹配截面、仅计数项；不出吨位")
+    ap.add_argument("--report", help="--validate 时把体检报告另存为 JSON")
+    ap.add_argument("--check-deps", action="store_true",
+                    help="检查正式识图链路前置（cad-file-reader / lis-skill-bus）")
+    ap.add_argument("--length-scenario", action="append", type=float, default=[],
+                    metavar="M", help="长度敏感性场景（米，可重复，如 --length-scenario 4.5）")
     a = ap.parse_args(raw)
-    build(a.steel, a.out_prefix)
+
+    if a.check_deps:
+        status = prerequisites_status()
+        print(format_prerequisites(status))
+        raise SystemExit(0 if status["ready_for_formal_pipeline"] else 1)
+
+    steel_path = a.steel or a.contract
+    if a.validate:
+        if not steel_path:
+            ap.error("--validate 需要契约路径：--steel 路径 或 直接放位置参数")
+        report = validate_path(steel_path)
+        print(format_health(report))
+        if a.report:
+            rp = Path(a.report)
+            rp.parent.mkdir(parents=True, exist_ok=True)
+            rp.write_text(json.dumps(report, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+            print(f"体检报告：{rp}")
+        raise SystemExit(0 if report["status"] != "error" else 2)
+
+    if not steel_path or not a.out_prefix:
+        ap.error("计算模式需要 --steel 和 --out-prefix；只体检请用 --validate")
+    build(steel_path, a.out_prefix, length_scenarios=a.length_scenario)
 
 
 if __name__ == "__main__":

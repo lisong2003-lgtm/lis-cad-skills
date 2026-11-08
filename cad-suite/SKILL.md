@@ -2,7 +2,7 @@
 name: cad-suite
 slug: cad-suite
 displayName: CAD Suite Review Pipeline
-version: 0.3.1
+version: 0.3.2
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0

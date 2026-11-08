@@ -335,7 +335,7 @@ class Core:
         entry = result.get("entry")
         if not result.get("hit") or entry is None:
             print(json.dumps({"hit": False,
-                              "reason": result.get("reason", "无共享状态（降级：本机正常解析）"),
+                              "reason": result.get("reason", "无共享状态（未命中）"),
                               "project_key": result.get("project_key", "")},
                              ensure_ascii=False, indent=2))
             return 0
@@ -396,7 +396,7 @@ class Core:
     # ---------------------------------------------------------------- CLI
     def build_parser(self) -> argparse.ArgumentParser:
         ap = argparse.ArgumentParser(
-            description=f"{self.SKILL} 与 lis-skill-bus 可选接线")
+            description=f"{self.SKILL} 与 lis-skill-bus 契约接线")
         ap.add_argument("command", choices=["push", "pull"])
         ap.add_argument("--project", required=True, help="项目标识")
         ap.add_argument("--building", default="", help="楼栋（可选）")

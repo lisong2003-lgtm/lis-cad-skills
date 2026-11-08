@@ -40,7 +40,6 @@ CHECK_FILES: list[str] = [
         "scripts/yuanlin_qty.cmd",
         "rules/rules.json",
         "templates/项目专属规则示例.json",
-        "scripts/tests/test_yuanlin_qty.py"
 ]
 CLI_HELP: list[str] = [
         "yuanlin_qty.py"

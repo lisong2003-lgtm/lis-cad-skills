@@ -39,7 +39,6 @@ CHECK_FILES: list[str] = [
         "scripts/cad_measure_to_input.sh",
         "rules/装饰做法.json",
         "templates/快速概算输入表.csv",
-        "scripts/tests/test_decor_qty.py"
 ]
 CLI_HELP: list[str] = [
         "decor_qty.py",
