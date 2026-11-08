@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 · 2026-11-08 · 运行时与前置校验修复
+
+- **修 `runtime_env.sh` 解释器解析**：候选解释器改为逐项 `-x` 校验，glob 未命中不再把字面量当路径；优先 3.10+，只有 3.9 时降级运行并在 stderr 提示一次；macOS 自带 bash 3.2 在 `set -u` 下展开空数组的问题已规避。
+- **修 `.sh` 入口静默失败**：`steel_tonnage.sh` 与 `gangjiegou_statesync.sh` 现在检查 `runtime_env.sh` 返回值；找不到 Python 时退出 2 并给出安装/指定路径提示，不再出现 `exec: : not found`。`steel_tonnage.sh` 也统一走 `runtime_env.sh`，不再硬编码 `python3`。
+- **`--check-deps` 校验版本**：不再只看目录是否存在。`cad-file-reader` 按 `manifest.json`/`_meta.json`/`SKILL.md` 读版本并要求 ≥0.39.2，同时检查 `packs/steel-geometry`；`lis-skill-bus` 要求 ≥0.1.9。版本过低时退出 1，报告逐项给出当前值、最低要求和升级提示。
+- **报告前置行同步**：`--validate` 与吨位报告里的前置探测行改为显示版本号与“正式链路可用/不可用”，与 `--check-deps` 口径一致。
+- **Windows 入口补齐**：新增 `scripts/steel_tonnage.cmd`，并在 SKILL.md 注明无 `python3` 时改用 `py -3` / `python`；SkillHub 轻量包只保留 `.sh`/`.py`，GitHub 完整包含 `.cmd`。
+- **测试**：新增 5 项 shell 入口回归（缺 Python 干净退出、版本过低提示、statesync 不 exec 空路径、正常路径可跑、`set -u` 下仍可 source）与 5 项前置版本校验单测；合计 59 项。
+
 ## 0.3.1 · 2026-11-08 · 技能层瘦身与发布完整性
 
 - **SKILL.md 瘦身**：11,760 B → 12,593 B（+7.1%）。触发词、硬规则、能力边界保留在前置段；低频细则外移到 `references/`、`docs/`、`packs/`，按需加载，算法与业务口径不变。

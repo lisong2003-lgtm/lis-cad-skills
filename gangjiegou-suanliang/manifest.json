@@ -1,6 +1,6 @@
 {
   "name": "gangjiegou-suanliang",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": "lis",
   "license": "CC-BY-NC-SA-4.0",
   "entry": "SKILL.md",
@@ -11,7 +11,7 @@
     },
     "skill": "cad-file-reader>=0.39.2 with packs/steel-geometry; lis-skill-bus>=0.1.9",
     "contract": "cad-contract/v1 through lis-skill-bus",
-    "python": ">=3.10",
+    "python": ">=3.10 (3.9 degraded compatible)",
     "note": "两个技能仅正式识图链路需要；已有 *.steel.json 可直接计算。单独安装本技能不会自动带入前置。"
   },
   "scripts": [
@@ -21,7 +21,8 @@
     "scripts/gangjiegou_statesync.sh",
     "scripts/gangjiegou_statesync.cmd",
     "scripts/steel_tonnage.py",
-    "scripts/steel_tonnage.sh"
+    "scripts/steel_tonnage.sh",
+    "scripts/steel_tonnage.cmd"
   ],
   "references": [
     "CHANGELOG.md",
@@ -31,7 +32,8 @@
     "requirements.txt"
   ],
   "tests": [
-    "scripts/tests/test_steel_tonnage.py"
+    "scripts/tests/test_steel_tonnage.py",
+    "scripts/tests/test_runtime_env.py"
   ],
   "privacy": "只在本机消费已有识图契约 JSON；发布包不含 DWG/DXF/PDF、项目数据、公司路径或图纸内容。",
   "notes": "输出为 ±15% 吨位估算带，final_quantity=false；total_t 为推荐口径，分摊值另存 total_t_allocated_estimate；不替代深化设计、翻样、下料、结算与报价。",

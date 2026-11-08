@@ -5,5 +5,8 @@
 # 运行时解析（Python / 底座 / vendor）见 scripts/runtime_env.sh
 set -uo pipefail
 _HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-source "$_HERE/runtime_env.sh"
+if ! source "$_HERE/runtime_env.sh"; then
+  echo "[gangjiegou statesync] 运行时不可用，已停止（未降级为本地识图）。" >&2
+  exit 2
+fi
 exec "${PYTHON_BIN}" "$_HERE/gangjiegou_statesync.py" "$@"

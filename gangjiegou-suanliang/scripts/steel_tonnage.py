@@ -46,6 +46,9 @@ from typing import Any
 
 SCHEMA = "cad-steel-tonnage/v0.2"
 INPUT_SCHEMA = "cad-steel-geometry/v1"
+MIN_CAD_FILE_READER = "0.39.2"
+MIN_LIS_SKILL_BUS = "0.1.9"
+CAD_STEEL_PACK = "packs/steel-geometry"
 RHO = 0.00785  # mm² → kg/m
 KNOWN_GRADES = (
     "Q235", "Q345", "Q355", "Q390", "Q420", "Q460",
@@ -993,37 +996,118 @@ def _first_existing_skill(*names: str) -> str | None:
     return None
 
 
+def _skill_version(skill_dir: str) -> str | None:
+    """读技能版本：manifest.json > _meta.json > SKILL.md frontmatter。"""
+    root = Path(skill_dir)
+    for name in ("manifest.json", "_meta.json", "skill.json"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(data, dict) and data.get("version"):
+            return str(data["version"]).strip().lstrip("vV")
+    head = root / "SKILL.md"
+    if head.is_file():
+        try:
+            lines = head.read_text(encoding="utf-8", errors="replace").splitlines()[:80]
+        except OSError:
+            lines = []
+        for line in lines:
+            if line.startswith("version:"):
+                return line.split(":", 1)[1].strip().strip("\"'").lstrip("vV")
+    return None
+
+
+def _version_at_least(found: str | None, minimum: str) -> bool:
+    """按数字段比较版本；读不到版本号时保守判为不满足。"""
+    def _parts(value: str | None):
+        nums = re.findall(r"\d+", str(value or ""))
+        return tuple(int(n) for n in nums[:3]) if nums else None
+
+    got, need = _parts(found), _parts(minimum)
+    if not got or not need:
+        return False
+    width = max(len(got), len(need))
+    return got + (0,) * (width - len(got)) >= need + (0,) * (width - len(need))
+
+
+def _dependency_entry(path: str | None, minimum: str) -> dict:
+    version = _skill_version(path) if path else None
+    return {
+        "found": bool(path),
+        "path": path,
+        "version": version,
+        "min_version": minimum,
+        "version_ok": bool(path) and _version_at_least(version, minimum),
+    }
+
+
 def prerequisites_status() -> dict:
-    """探测正式识图链路的前置依赖；只读，不改环境。"""
+    """探测正式识图链路的前置依赖（含版本）；只读，不改环境。"""
     cad = os.environ.get("CAD_FILE_READER_HOME") or _first_existing_skill("cad-file-reader")
     bus = os.environ.get("SKILLBUS_HOME") or _first_existing_skill("lis-skill-bus")
+    cad_entry = _dependency_entry(cad, MIN_CAD_FILE_READER)
+    cad_entry["steel_pack"] = bool(cad) and (Path(cad) / CAD_STEEL_PACK).is_dir()
+    bus_entry = _dependency_entry(bus, MIN_LIS_SKILL_BUS)
+
     missing = []
     if not cad:
-        missing.append("cad-file-reader>=0.39.2（含 packs/steel-geometry）")
+        missing.append(f"cad-file-reader>={MIN_CAD_FILE_READER}（含 {CAD_STEEL_PACK}）")
+    elif not cad_entry["version_ok"]:
+        missing.append(f"cad-file-reader>={MIN_CAD_FILE_READER}"
+                       f"（当前 {cad_entry['version'] or '版本未知'}）")
+    elif not cad_entry["steel_pack"]:
+        missing.append(f"cad-file-reader 缺少 {CAD_STEEL_PACK} 识图包")
     if not bus:
-        missing.append("lis-skill-bus>=0.1.9")
+        missing.append(f"lis-skill-bus>={MIN_LIS_SKILL_BUS}")
+    elif not bus_entry["version_ok"]:
+        missing.append(f"lis-skill-bus>={MIN_LIS_SKILL_BUS}"
+                       f"（当前 {bus_entry['version'] or '版本未知'}）")
+
+    ready = (cad_entry["found"] and cad_entry["version_ok"] and cad_entry["steel_pack"]
+             and bus_entry["found"] and bus_entry["version_ok"])
     return {
-        "cad_file_reader": {"found": bool(cad), "path": cad},
-        "lis_skill_bus": {"found": bool(bus), "path": bus},
-        "ready_for_formal_pipeline": bool(cad and bus),
+        "cad_file_reader": cad_entry,
+        "lis_skill_bus": bus_entry,
+        "ready_for_formal_pipeline": ready,
         "scope": "仅正式识图链路（cad-file-reader -> lis-skill-bus -> 本技能）需要；"
                  "直接消费已有 *.steel.json 计算不受影响。",
         "install_hint": ("缺 " + "、".join(missing) + "；未装齐前无法从 DWG 出数，"
-                         "只能用已有契约 JSON 计算。") if missing else None,
+                         "只能用已有契约 JSON 计算或 --validate 体检。") if missing else None,
     }
 
 
 def format_prerequisites(st: dict) -> str:
-    cad = "✅" if st["cad_file_reader"]["found"] else "❌"
-    bus = "✅" if st["lis_skill_bus"]["found"] else "❌"
+    cad_dep, bus_dep = st["cad_file_reader"], st["lis_skill_bus"]
+
+    def _mark(dep: dict, extra_ok: bool = True) -> str:
+        if not dep["found"]:
+            return "❌"
+        return "✅" if dep["version_ok"] and extra_ok else "⚠️"
+
+    def _version(dep: dict) -> str:
+        if not dep["found"]:
+            return "未找到"
+        return f"{dep['version'] or '版本未知'}（要求 ≥{dep['min_version']}）"
+
+    cad_mark = _mark(cad_dep, cad_dep["steel_pack"])
+    cad_pack = "✅" if cad_dep["steel_pack"] else "❌ 缺 " + CAD_STEEL_PACK
     lines = [
         "正式识图链路前置探测",
-        f"- cad-file-reader：{cad} {st['cad_file_reader']['path'] or '未找到'}",
-        f"- lis-skill-bus：{bus} {st['lis_skill_bus']['path'] or '未找到'}",
+        f"- cad-file-reader：{cad_mark} {_version(cad_dep)}"
+        f"　{cad_dep['path'] or ''}".rstrip(),
+        f"  钢结构识图包：{cad_pack}",
+        f"- lis-skill-bus：{_mark(bus_dep)} {_version(bus_dep)}"
+        f"　{bus_dep['path'] or ''}".rstrip(),
         f"- 正式链路可用：{'是' if st['ready_for_formal_pipeline'] else '否'}",
     ]
     if st.get("install_hint"):
         lines.append(f"- 处理：{st['install_hint']}")
+    lines.append("- 说明：只影响“从 DWG 开始”的正式链路；已有或手工准备的 "
+                 "*.steel.json 计算、--validate 体检不受影响。")
     return "\n".join(lines)
 
 
@@ -1199,10 +1283,18 @@ def format_health(report: dict) -> str:
         lines.extend(f"- {x}" for x in report["warnings"])
     deps = report.get("dependencies") or {}
     if deps:
+        cad_dep = deps.get("cad_file_reader", {})
+        bus_dep = deps.get("lis_skill_bus", {})
+        ready = deps.get("ready_for_formal_pipeline")
         lines.append(
-            "前置：cad-file-reader {c} / lis-skill-bus {b}（只影响正式识图链路）".format(
-                c="✅" if deps.get("cad_file_reader", {}).get("found") else "❌",
-                b="✅" if deps.get("lis_skill_bus", {}).get("found") else "❌"))
+            "前置：cad-file-reader {c} {cv} / lis-skill-bus {b} {bv}"
+            "（正式链路{ready}；只影响从 DWG 开始的识图）".format(
+                c="✅" if cad_dep.get("found") and cad_dep.get("version_ok")
+                and cad_dep.get("steel_pack") else "⚠️",
+                cv=cad_dep.get("version") or "未找到",
+                b="✅" if bus_dep.get("found") and bus_dep.get("version_ok") else "⚠️",
+                bv=bus_dep.get("version") or "未找到",
+                ready="可用" if ready else "不可用"))
     return "\n".join(lines)
 
 
@@ -1473,10 +1565,14 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
     if pre.get("ready_for_formal_pipeline"):
         md.write("> 前置探测：cad-file-reader ✅ / lis-skill-bus ✅（正式识图链路可用）\n")
     else:
-        md.write("> 前置探测：cad-file-reader {} / lis-skill-bus {}；正式识图链路不可用。"
-                 "本报告由已有契约计算，不受影响。\n".format(
-                     "✅" if pre.get("cad_file_reader", {}).get("found") else "❌",
-                     "✅" if pre.get("lis_skill_bus", {}).get("found") else "❌"))
+        cad_pre = pre.get("cad_file_reader", {})
+        bus_pre = pre.get("lis_skill_bus", {})
+        md.write("> 前置探测：cad-file-reader {} {} / lis-skill-bus {} {}；"
+                 "正式识图链路不可用。本报告由已有契约计算，不受影响。\n".format(
+                     "✅" if cad_pre.get("version_ok") and cad_pre.get("steel_pack")
+                     else "⚠️", cad_pre.get("version") or "未找到",
+                     "✅" if bus_pre.get("version_ok") else "⚠️",
+                     bus_pre.get("version") or "未找到"))
         if pre.get("install_hint"):
             md.write(f"> {pre['install_hint']}\n")
     ev = out.get("input_evidence") or {}

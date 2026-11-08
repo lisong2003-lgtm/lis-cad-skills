@@ -2,7 +2,7 @@
 name: gangjiegou-suanliang
 slug: gangjiegou-suanliang
 displayName: 钢结构算量 · 吨位估算带
-version: 0.3.1
+version: 0.3.2
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
@@ -23,7 +23,7 @@ locale: zh-CN
 - `lis-skill-bus` 是唯一定接线，不解析图纸，只传递和复用契约。
 - 本技能不提供第二套识图路径。bus 缺失时正式识图链路停止并提示安装；已经由该链路生成并留存的官方契约仍可直接送入 `steel_tonnage.py` 做计算或回归。
 - 算量结果必须带契约来源（图号/坐标证据）。
-- 首次使用或换机后先运行 `python3 scripts/steel_tonnage.py --check-deps`：齐全退出 0，缺依赖退出 1 并明确列出；缺依赖只阻断“从 DWG 开始”的正式识图链路，不阻断已有契约或手工契约的计算。
+- 首次使用或换机后先运行 `python3 scripts/steel_tonnage.py --check-deps`：同时校验两个前置的**版本号**与 `packs/steel-geometry` 是否在位；齐全退出 0，缺失/版本过低退出 1 并逐项列出当前值与最低要求。缺依赖只阻断“从 DWG 开始”的正式识图链路，不阻断已有契约或手工契约的计算。
 
 ## 输入契约
 
@@ -73,6 +73,8 @@ python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py \
 ```bash
 python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py --check-deps
 ```
+
+Windows 下没有 `python3` 命令时，用 `py -3` 或 `python` 代替；也可直接运行 `scripts\steel_tonnage.cmd`（GitHub 完整包内有，SkillHub 轻量包只保留 `.sh`/`.py`）。
 
 0) 未命中只表示当前没有可复用契约，随后仍按 1)→2)→3) 由 `cad-file-reader` 解图并经 bus 发布。没装 bus 时停止正式识图链路并安装 bus，不允许由本技能自行解图或用其它解析器兜底。
 
@@ -157,4 +159,4 @@ cd skills/gangjiegou-suanliang/scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.0 含 49 项合成数据单测，覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检和长度敏感性场景。
+v0.3.2 含 59 项单测（54 项合成数据 + 5 项 shell 入口回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。

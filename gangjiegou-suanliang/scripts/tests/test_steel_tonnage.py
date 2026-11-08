@@ -3,10 +3,12 @@
 """steel_tonnage 钢结构吨位估算测试（合成数据）。"""
 import csv
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import steel_tonnage as S  # noqa: E402
@@ -638,6 +640,83 @@ class TestTotalCaliberAndValidate(unittest.TestCase):
             self.assertIn("输入无证据", md)
             self.assertIn("`connections[]` 为空", md)
             self.assertIn("`finishes[]` 为空", md)
+
+
+class TestPrerequisites(unittest.TestCase):
+    """前置探测必须校验版本，不能只看目录存在。"""
+
+    def test_version_compare(self):
+        self.assertTrue(S._version_at_least("0.1.10", "0.1.9"))
+        self.assertTrue(S._version_at_least("0.39.2", "0.39.2"))
+        self.assertTrue(S._version_at_least("1.0", "1.0.0"))
+        self.assertFalse(S._version_at_least("0.1.6", "0.1.9"))
+        self.assertFalse(S._version_at_least("0.39.1", "0.39.2"))
+        self.assertFalse(S._version_at_least(None, "0.1.9"))
+        self.assertFalse(S._version_at_least("dev", "0.1.9"))
+
+    def test_skill_version_sources(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            self.assertIsNone(S._skill_version(str(td)))
+            (td / "_meta.json").write_text('{"version": "0.1.10"}', encoding="utf-8")
+            self.assertEqual(S._skill_version(str(td)), "0.1.10")
+            (td / "manifest.json").write_text('{"version": "0.39.6"}', encoding="utf-8")
+            self.assertEqual(S._skill_version(str(td)), "0.39.6")
+            (td / "manifest.json").unlink()
+            (td / "_meta.json").unlink()
+            (td / "SKILL.md").write_text("---\nname: x\nversion: v0.2.1\n---\n",
+                                         encoding="utf-8")
+            self.assertEqual(S._skill_version(str(td)), "0.2.1")
+
+    def _make_skills(self, td: Path, cad_version: str, bus_version: str,
+                     steel_pack: bool = True):
+        cad = td / "cad-file-reader"
+        bus = td / "lis-skill-bus"
+        (cad / "scripts").mkdir(parents=True)
+        (bus / "scripts").mkdir(parents=True)
+        (cad / "manifest.json").write_text(
+            json.dumps({"version": cad_version}), encoding="utf-8")
+        (bus / "_meta.json").write_text(
+            json.dumps({"version": bus_version}), encoding="utf-8")
+        if steel_pack:
+            (cad / "packs" / "steel-geometry").mkdir(parents=True)
+        return cad, bus
+
+    def _status(self, cad: Path, bus: Path) -> dict:
+        env = {"CAD_FILE_READER_HOME": str(cad), "SKILLBUS_HOME": str(bus)}
+        with mock.patch.dict(os.environ, env, clear=False):
+            return S.prerequisites_status()
+
+    def test_ready_only_when_versions_and_pack_ok(self):
+        with tempfile.TemporaryDirectory() as td:
+            cad, bus = self._make_skills(Path(td), "0.39.6", "0.1.10")
+            st = self._status(cad, bus)
+            self.assertTrue(st["ready_for_formal_pipeline"], st)
+            self.assertEqual(st["cad_file_reader"]["version"], "0.39.6")
+            self.assertTrue(st["cad_file_reader"]["steel_pack"])
+            self.assertIsNone(st["install_hint"])
+
+    def test_old_bus_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as td:
+            cad, bus = self._make_skills(Path(td), "0.39.2", "0.1.6")
+            st = self._status(cad, bus)
+            self.assertFalse(st["ready_for_formal_pipeline"])
+            self.assertFalse(st["lis_skill_bus"]["version_ok"])
+            self.assertIn("lis-skill-bus>=0.1.9", st["install_hint"])
+            self.assertIn("0.1.6", st["install_hint"])
+            text = S.format_prerequisites(st)
+            self.assertIn("正式链路可用：否", text)
+
+    def test_old_cad_or_missing_pack_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as td:
+            cad, bus = self._make_skills(Path(td), "0.38.9", "0.1.10")
+            self.assertFalse(self._status(cad, bus)["ready_for_formal_pipeline"])
+        with tempfile.TemporaryDirectory() as td:
+            cad, bus = self._make_skills(Path(td), "0.39.6", "0.1.10",
+                                         steel_pack=False)
+            st = self._status(cad, bus)
+            self.assertFalse(st["ready_for_formal_pipeline"])
+            self.assertIn("packs/steel-geometry", st["install_hint"])
 
 
 if __name__ == "__main__":
