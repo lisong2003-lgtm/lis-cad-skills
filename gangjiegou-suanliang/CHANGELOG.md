@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 · 2026-11-08 · 分发一致性与入口指引
+
+- **修 SkillHub 包完整性扣分**：平台评估指出 `manifest.json` 声明了两个包内不存在的 `.cmd`。三平台改为同一套文件分发，SkillHub 包补齐 `scripts/steel_tonnage.cmd`、`scripts/gangjiegou_statesync.cmd` 和 `icon.png`，不再靠“轻量包剔除 `.cmd`”回避。
+- **新增 `--check-package`**：按 `manifest.json` 的 `entry/scripts/references/tests/examples` 逐项核对文件是否在包内，缺文件退出 2；发布前和解包后都能自查，避免清单与包内容再次漂移。`--package-root` 可指向任意包目录。
+- **入口选择前置**：SKILL.md 增加“入口怎么选”表，把体检、已有契约、正式链路、手工契约四种起手式集中到一屏；另加 5 条常见问题，减少首次使用的选择成本。
+- **文档同步**：REPORT/README 版本号、测试数（61 项）、Windows `.cmd` 说明与三平台分发口径一致。
+
 ## 0.3.2 · 2026-11-08 · 运行时与前置校验修复
 
 - **修 `runtime_env.sh` 解释器解析**：候选解释器改为逐项 `-x` 校验，glob 未命中不再把字面量当路径；优先 3.10+，只有 3.9 时降级运行并在 stderr 提示一次；macOS 自带 bash 3.2 在 `set -u` 下展开空数组的问题已规避。

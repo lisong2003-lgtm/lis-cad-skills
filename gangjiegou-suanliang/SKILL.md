@@ -2,7 +2,7 @@
 name: gangjiegou-suanliang
 slug: gangjiegou-suanliang
 displayName: 钢结构算量 · 吨位估算带
-version: 0.3.2
+version: 0.3.3
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
@@ -23,7 +23,18 @@ locale: zh-CN
 - `lis-skill-bus` 是唯一定接线，不解析图纸，只传递和复用契约。
 - 本技能不提供第二套识图路径。bus 缺失时正式识图链路停止并提示安装；已经由该链路生成并留存的官方契约仍可直接送入 `steel_tonnage.py` 做计算或回归。
 - 算量结果必须带契约来源（图号/坐标证据）。
-- 首次使用或换机后先运行 `python3 scripts/steel_tonnage.py --check-deps`：同时校验两个前置的**版本号**与 `packs/steel-geometry` 是否在位；齐全退出 0，缺失/版本过低退出 1 并逐项列出当前值与最低要求。缺依赖只阻断“从 DWG 开始”的正式识图链路，不阻断已有契约或手工契约的计算。
+- 首次使用或换机后先运行 `python3 scripts/steel_tonnage.py --check-deps`：同时校验两个前置的**版本号**与 `packs/steel-geometry` 是否在位；齐全退出 0，缺失/版本过低退出 1 并逐项列出当前值与最低要求。缺依赖只阻断“从 DWG 开始”的正式识图链路，不阻断已有契约或手工契约的计算。发布或解包后可用 `--check-package` 核对 `manifest.json` 声明的文件是否都在包内。
+
+## 入口怎么选
+
+| 你的情况 | 直接运行 | 结果 |
+|---|---|---|
+| 第一次安装、换机、解包后 | `--check-deps`，必要时 `--check-package` | 只报缺什么，不出数 |
+| 已有 `*.steel.json` | `--steel 文件 --out-prefix 前缀` | 出 `json/md/csv` |
+| 只有 DWG，前置齐全 | 先由 `cad-file-reader` 识图并经 bus 发布，再走上一行 | 出 `json/md/csv` |
+| 只有 DWG，前置不齐 | 先装 `cad-file-reader` 与 `lis-skill-bus`；本技能没有识图入口 | 停下并列出缺件 |
+| 想先确认输入能不能算 | `--validate 文件` | 只体检，退出码 0/2 |
+| 没有识图产物、需要手工整理 | 按 `examples/README.md` 构造契约，再 `--validate` | 受支持的降级路径 |
 
 ## 输入契约
 
@@ -74,7 +85,7 @@ python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py \
 python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py --check-deps
 ```
 
-Windows 下没有 `python3` 命令时，用 `py -3` 或 `python` 代替；也可直接运行 `scripts\steel_tonnage.cmd`（GitHub 完整包内有，SkillHub 轻量包只保留 `.sh`/`.py`）。
+Windows 下没有 `python3` 命令时，用 `py -3` 或 `python` 代替；也可直接运行 `scripts\steel_tonnage.cmd`（GitHub、SkillHub、ClawHub 三个包内均含；若平台裁剪了 `.cmd`，用 `py -3 scripts\steel_tonnage.py` 等价调用）。
 
 0) 未命中只表示当前没有可复用契约，随后仍按 1)→2)→3) 由 `cad-file-reader` 解图并经 bus 发布。没装 bus 时停止正式识图链路并安装 bus，不允许由本技能自行解图或用其它解析器兜底。
 
@@ -137,6 +148,14 @@ JSON 关键字段包括 `length_basis`（`explicit/drawn/none`）、`length_used
 - `--report out.json` 可把体检结果落盘。
 - `--length-scenario 4.5 --length-scenario 6` 在长度证据不足时给多档敏感性场景，场景值明确标注“不是结果”。
 
+## 常见问题
+
+- **报告里 `connections[]`/`finishes[]` 为空，是没实现吗？** 不是。输入契约里这些数组本来就是空的，报告会写“输入无证据”；有标注证据才出数。
+- **总吨位该看哪个数？** 看 `total_t`。`total_basis=member_level` 是逐根台账求和（推荐）；退回 `allocated_estimate` 时是分摊草稿，报告会标“不是答案”。
+- **同一编号出现多次、截面对不上怎么办？** 进 `member_review_items`，按证据人工确认；技能不会替你挑一个。
+- **装完能加载、出数时却说缺依赖？** 本技能不重复实现识图。先 `--check-deps`，按提示补齐两个前置；已有契约仍可计算。
+- **能直接读 DWG 吗？** 不能，这是设计边界。DWG/DXF 解析、代理实体、大文件流式扫描都归 `cad-file-reader`。
+
 ## 使用边界
 
 - 这是图面证据驱动的草稿估算，不替代深化设计、结构计算、翻样、下料、清单编制、结算、竣工计量或报价。
@@ -159,4 +178,4 @@ cd skills/gangjiegou-suanliang/scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.2 含 59 项单测（54 项合成数据 + 5 项 shell 入口回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
+v0.3.3 含 61 项单测（54 项合成数据 + 5 项 shell 入口回归 + 2 项发布包完整性），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。

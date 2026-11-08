@@ -1111,6 +1111,64 @@ def format_prerequisites(st: dict) -> str:
     return "\n".join(lines)
 
 
+MANIFEST_LISTED_KEYS = ("entry", "icon", "scripts", "references", "tests", "examples")
+
+
+def package_status(skill_dir: str | None = None) -> dict:
+    """校验 manifest.json 声明的文件是否都在包内；只读，用于发布前自检。"""
+    root = Path(skill_dir) if skill_dir else Path(__file__).resolve().parent.parent
+    manifest_path = root / "manifest.json"
+    result = {
+        "root": str(root),
+        "manifest": str(manifest_path),
+        "version": None,
+        "listed": [],
+        "missing": [],
+        "status": "error",
+        "error": None,
+    }
+    if not manifest_path.is_file():
+        result["error"] = f"缺 {manifest_path}"
+        return result
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        result["error"] = f"manifest.json 读取失败：{exc}"
+        return result
+    if not isinstance(data, dict):
+        result["error"] = "manifest.json 顶层不是对象"
+        return result
+
+    listed: list[str] = []
+    for key in MANIFEST_LISTED_KEYS:
+        value = data.get(key)
+        if isinstance(value, str):
+            listed.append(value)
+        elif isinstance(value, list):
+            listed.extend(v for v in value if isinstance(v, str))
+    missing = [p for p in listed if not (root / p).exists()]
+    result.update(
+        version=data.get("version"),
+        listed=listed,
+        missing=missing,
+        status="ok" if not missing else "error",
+    )
+    return result
+
+
+def format_package(st: dict) -> str:
+    lines = [f"发布包完整性自检：{st['root']}", f"- manifest 版本：{st['version'] or '未读到'}"]
+    if st.get("error"):
+        lines.append(f"- 结果：❌ {st['error']}")
+        return "\n".join(lines)
+    lines.append(f"- 清单条目：{len(st['listed'])} 项；缺失 {len(st['missing'])} 项")
+    if st["missing"]:
+        lines.append("- 缺失文件：" + "、".join(st["missing"]))
+    else:
+        lines.append("- 结果：✅ 清单内文件全部在包内")
+    return "\n".join(lines)
+
+
 def _load_json(path: str) -> tuple[dict | None, str | None]:
     try:
         with Path(path).open(encoding="utf-8") as f:
@@ -1788,6 +1846,9 @@ def main() -> None:
     ap.add_argument("--report", help="--validate 时把体检报告另存为 JSON")
     ap.add_argument("--check-deps", action="store_true",
                     help="检查正式识图链路前置（cad-file-reader / lis-skill-bus）")
+    ap.add_argument("--check-package", action="store_true",
+                    help="校验 manifest.json 声明的文件是否都在包内（发布前自检）")
+    ap.add_argument("--package-root", help="--check-package 的技能根目录，缺省为本技能根目录")
     ap.add_argument("--length-scenario", action="append", type=float, default=[],
                     metavar="M", help="长度敏感性场景（米，可重复，如 --length-scenario 4.5）")
     a = ap.parse_args(raw)
@@ -1796,6 +1857,11 @@ def main() -> None:
         status = prerequisites_status()
         print(format_prerequisites(status))
         raise SystemExit(0 if status["ready_for_formal_pipeline"] else 1)
+
+    if a.check_package:
+        pkg = package_status(a.package_root)
+        print(format_package(pkg))
+        raise SystemExit(0 if pkg["status"] == "ok" else 2)
 
     steel_path = a.steel or a.contract
     if a.validate:

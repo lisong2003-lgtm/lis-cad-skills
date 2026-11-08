@@ -92,5 +92,35 @@ class TestRuntimeEnv(unittest.TestCase):
         self.assertRegex(version, r"^3\.\d+\.")
 
 
+class TestPackageCheck(unittest.TestCase):
+    """--check-package：manifest 声明与包内文件必须一致（SkillHub 评估扣分点）。"""
+
+    def _run(self, *args):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "steel_tonnage.py"), "--check-package", *args],
+            cwd=str(SKILL), env=_env(), capture_output=True, text=True,
+            timeout=120, errors="replace")
+
+    def test_real_skill_tree_is_complete(self):
+        p = self._run()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("缺失 0 项", p.stdout)
+
+    def test_missing_declared_file_is_reported(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "SKILL.md").write_text("---\nversion: 9.9.9\n---\n", encoding="utf-8")
+            (root / "manifest.json").write_text(json.dumps({
+                "version": "9.9.9",
+                "entry": "SKILL.md",
+                "scripts": ["scripts/never_there.cmd"],
+            }), encoding="utf-8")
+            p = self._run("--package-root", str(root))
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("scripts/never_there.cmd", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

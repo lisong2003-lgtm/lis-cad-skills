@@ -2,7 +2,7 @@
 
 **[English](./README.en.md) | [中文](./README.md)**
 
-**v0.3.2** · Converts an existing `*.steel.json` contract from the `cad-file-reader` steel-geometry pack into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
+**v0.3.3** · Converts an existing `*.steel.json` contract from the `cad-file-reader` steel-geometry pack into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
 
 The formal recognition path is fixed: `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`. This skill never reads DWG/DXF/PDF and does not provide a second recognition path that bypasses `cad-file-reader` or `lis-skill-bus`.
 
@@ -108,6 +108,7 @@ python3 scripts/steel_tonnage.py \
 | Option | Purpose | Exit status |
 |---|---|---|
 | `--check-deps` | Probe `cad-file-reader` / `lis-skill-bus` versions and the steel pack only | 0 when ready, 1 when missing or too old |
+| `--check-package [--package-root DIR]` | Verify every file listed in `manifest.json` exists in the package | 0 when complete, 2 when a file is missing |
 | `--validate <json>` | Contract health check only: fields, unmatched members, count-only sections, length evidence, dependencies | 0 when calculable, 2 on structural errors |
 | `--report <json>` | Write the health report as `cad-steel-contract-health/v1` | Follows `--validate` |
 | `--steel <json>` | Calculation input | 0 on success |
@@ -164,7 +165,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.2 includes **59 unit tests** (54 synthetic-data + 5 shell entry-point regressions) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, and clean exit 2 from `.sh` entry points when no Python is available.
+v0.3.3 includes **61 unit tests** (54 synthetic-data + 5 shell entry-point + 2 package-integrity regressions) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
 
 Smoke test:
 
