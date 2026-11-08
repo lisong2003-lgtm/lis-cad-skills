@@ -1112,6 +1112,7 @@ def format_prerequisites(st: dict) -> str:
 
 
 MANIFEST_LISTED_KEYS = ("entry", "icon", "scripts", "references", "tests", "examples")
+MANIFEST_OPTIONAL_KEYS = ("scripts_windows_optional",)
 
 
 def package_status(skill_dir: str | None = None) -> dict:
@@ -1147,10 +1148,17 @@ def package_status(skill_dir: str | None = None) -> dict:
         elif isinstance(value, list):
             listed.extend(v for v in value if isinstance(v, str))
     missing = [p for p in listed if not (root / p).exists()]
+    optional: list[str] = []
+    for key in MANIFEST_OPTIONAL_KEYS:
+        value = data.get(key)
+        if isinstance(value, list):
+            optional.extend(v for v in value if isinstance(v, str))
+    optional_missing = [p for p in optional if not (root / p).exists()]
     result.update(
         version=data.get("version"),
         listed=listed,
         missing=missing,
+        optional_missing=optional_missing,
         status="ok" if not missing else "error",
     )
     return result
@@ -1166,6 +1174,9 @@ def format_package(st: dict) -> str:
         lines.append("- 缺失文件：" + "、".join(st["missing"]))
     else:
         lines.append("- 结果：✅ 清单内文件全部在包内")
+    if st.get("optional_missing"):
+        lines.append("- 提示：Windows 入口未随包（" + "、".join(st["optional_missing"])
+                     + "）；SkillHub 拒收 .cmd，可用 py -3 scripts/steel_tonnage.py 等价调用。")
     return "\n".join(lines)
 
 

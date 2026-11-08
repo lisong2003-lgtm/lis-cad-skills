@@ -2,10 +2,10 @@
 
 ## 0.3.3 · 2026-11-08 · 分发一致性与入口指引
 
-- **修 SkillHub 包完整性扣分**：平台评估指出 `manifest.json` 声明了两个包内不存在的 `.cmd`。三平台改为同一套文件分发，SkillHub 包补齐 `scripts/steel_tonnage.cmd`、`scripts/gangjiegou_statesync.cmd` 和 `icon.png`，不再靠“轻量包剔除 `.cmd`”回避。
-- **新增 `--check-package`**：按 `manifest.json` 的 `entry/scripts/references/tests/examples` 逐项核对文件是否在包内，缺文件退出 2；发布前和解包后都能自查，避免清单与包内容再次漂移。`--package-root` 可指向任意包目录。
+- **修 SkillHub 包完整性扣分**：平台评估指出 `manifest.json` 声明了轻量包内不存在的两个 `.cmd`。SkillHub 实测拒收 `.cmd` 与 `.png`（400），因此把 `.cmd` 从必需 `scripts` 移到 `scripts_windows_optional`，清单不再声明“必须存在”；GitHub/ClawHub 完整包照旧带 `.cmd`，Windows 无 `.cmd` 时用 `py -3 scripts\steel_tonnage.py`。
+- **新增 `--check-package`**：按 `manifest.json` 的 `entry/scripts/references/tests/examples` 逐项核对文件是否在包内，缺文件退出 2；Windows 可选入口缺失只提示不计错。发布前和解包后都能自查，避免清单与包内容再次漂移。`--package-root` 可指向任意包目录。
 - **入口选择前置**：SKILL.md 增加“入口怎么选”表，把体检、已有契约、正式链路、手工契约四种起手式集中到一屏；另加 5 条常见问题，减少首次使用的选择成本。
-- **文档同步**：REPORT/README 版本号、测试数（61 项）、Windows `.cmd` 说明与三平台分发口径一致。
+- **文档同步**：REPORT/README 版本号、测试数（62 项）、Windows `.cmd` 说明与三平台分发口径一致。
 
 ## 0.3.2 · 2026-11-08 · 运行时与前置校验修复
 

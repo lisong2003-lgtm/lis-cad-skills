@@ -121,6 +121,22 @@ class TestPackageCheck(unittest.TestCase):
             self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
             self.assertIn("scripts/never_there.cmd", p.stdout)
 
+    def test_windows_optional_entry_is_hint_not_error(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "SKILL.md").write_text("---\nversion: 9.9.9\n---\n", encoding="utf-8")
+            (root / "manifest.json").write_text(json.dumps({
+                "version": "9.9.9",
+                "entry": "SKILL.md",
+                "scripts": ["SKILL.md"],
+                "scripts_windows_optional": ["scripts/steel_tonnage.cmd"],
+            }), encoding="utf-8")
+            p = self._run("--package-root", str(root))
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertIn("Windows 入口未随包", p.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

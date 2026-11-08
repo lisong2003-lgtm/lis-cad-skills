@@ -165,7 +165,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.3 includes **61 unit tests** (54 synthetic-data + 5 shell entry-point + 2 package-integrity regressions) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
+v0.3.3 includes **62 unit tests** (54 synthetic-data + 5 shell entry-point + 3 package-integrity regressions) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
 
 Smoke test:
 

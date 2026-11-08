@@ -85,7 +85,7 @@ python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py \
 python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py --check-deps
 ```
 
-Windows 下没有 `python3` 命令时，用 `py -3` 或 `python` 代替；也可直接运行 `scripts\steel_tonnage.cmd`（GitHub、SkillHub、ClawHub 三个包内均含；若平台裁剪了 `.cmd`，用 `py -3 scripts\steel_tonnage.py` 等价调用）。
+Windows 下没有 `python3` 命令时，用 `py -3` 或 `python` 代替；GitHub/ClawHub 包内还带 `scripts\steel_tonnage.cmd`，可直接运行。SkillHub 平台拒收 `.cmd`，轻量包内没有它，用 `py -3 scripts\steel_tonnage.py` 等价调用。
 
 0) 未命中只表示当前没有可复用契约，随后仍按 1)→2)→3) 由 `cad-file-reader` 解图并经 bus 发布。没装 bus 时停止正式识图链路并安装 bus，不允许由本技能自行解图或用其它解析器兜底。
 
@@ -178,4 +178,4 @@ cd skills/gangjiegou-suanliang/scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.3 含 61 项单测（54 项合成数据 + 5 项 shell 入口回归 + 2 项发布包完整性），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
+v0.3.3 含 62 项单测（54 项合成数据 + 5 项 shell 入口回归 + 3 项发布包完整性），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
