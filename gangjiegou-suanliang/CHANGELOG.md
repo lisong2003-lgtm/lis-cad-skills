@@ -1,9 +1,19 @@
 # Changelog
 
+## 0.3.7 · 2026-11-09 · 正式入口改为 bus 拉取，来源可核
+
+- **澄清 0.3.6 的删除范围**：0.3.6 删掉的是“本技能发起识图”的误导性示例命令，不是取消强制链路。正式链路仍是 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`，识图只发生在 `cad-file-reader`，算量技能不得单独识图。
+- **新增正式入口 `--from-bus`**：`steel_tonnage.py --from-bus --project 项目 [--building] [--floor] [--entry-id]` 通过本技能 statesync 从 `lis-skill-bus` 拉取 `cad-contract/v1`；未命中、bus 不可用或来源不符时以退出码 2 停止，不降级为本地识图，也不调用任何识图脚本。
+- **契约拆封与来源核对**：只接受 `producer.skill=cad-file-reader` 且 `contract.schema=cad-steel-geometry/v1` 的 bus 包装；输出 JSON/Markdown 新增 `contract_source`，`origin=lis-skill-bus` 为正式契约，`origin=direct_file` 表示已有或手工契约，不代表正式识图链路。
+- **`--steel` 定位收窄**：仅用于重算已有契约或手工契约；README/SKILL.md 的正式示例统一改为 `--from-bus`。
+- **文档同步**：`references/bus-contract.md` 写明 bus 只做契约交接、不承担识图；manifest/notes 与新入口一致。
+- **回归**：新增 6 项总线契约测试（包装拆封、来源透传、非识图 producer 拒绝、内层 schema 拒绝、`--validate` 接受包装、缺 bus 退出 2）与正式链路文档约束；合计 70 项单测（60 计算/契约 + 10 shell/包完整性）。
+
 ## 0.3.6 · 2026-11-09 · 消除描述与行为不一致
 
 - **README 去掉识图命令**：正式链路示例不再直接给出前置技能的扫描与几何提取调用，改为指向 `cad-file-reader` 的 SKILL.md。本技能文档中不再出现可被理解为“本技能发起识图”的命令，职责边界与描述一致。
 - **背景**：ClawHub 0.3.5 的 SkillSpector `TP4` 将 README 中的识图命令判为“声明不做识图、实际编排识图”的描述与行为不一致；本版删除该示例命令，保留“按前置技能文档执行一次识图”的流程说明。
+- **边界未放宽**：删除的是本技能文档里的误导性示例，不是强制链路。`cad-file-reader` 唯一识图、经 `lis-skill-bus` 交接的要求不变；0.3.7 进一步把正式入口收紧为 `--from-bus`。
 - 64 项单测与包自检不变。
 
 ## 0.3.5 · 2026-11-09 · statesync 代码加载加固

@@ -2,9 +2,9 @@
 
 **[English](./README.en.md) | [中文](./README.md)**
 
-**v0.3.6** · 给已有钢结构识图产物的使用者：不碰图纸解析，只把 `cad-file-reader` 钢结构包的 `*.steel.json` 变成 **截面谱 + 吨位估算带 + 构件台账**。
+**v0.3.7** · 正式入口 `--from-bus`：从 `lis-skill-bus` 取 `cad-file-reader` 的钢结构契约，不碰图纸解析，只把它变成 **截面谱 + 吨位估算带 + 构件台账**。
 
-正式识图链路固定为 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`。本技能不读取 DWG/DXF/PDF，也不提供绕开 `cad-file-reader` 或 `lis-skill-bus` 的第二套识图路径。
+正式识图链路固定为 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`。识图只能由 `cad-file-reader` 做，交接只能经 `lis-skill-bus`；本技能不读取 DWG/DXF/PDF，不调用识图脚本，也不接受绕开 bus 的图纸路径。
 
 ## 先确认能不能用
 
@@ -43,31 +43,22 @@ python3 scripts/steel_tonnage.py --check-deps
 
 ## 快速开始
 
-### 1. 正式识图链路
+### 1. 正式链路（唯一入口：lis-skill-bus）
 
 ```bash
 # 先探测前置；缺依赖时退出码 1
 python3 scripts/steel_tonnage.py --check-deps
 
-# 复用同项目/楼栋/楼层的契约；命中则不再解图
-bash scripts/gangjiegou_statesync.sh pull --project 项目
-
-# 未命中时：按 cad-file-reader 的 SKILL.md 执行唯一一次识图，产出
-# 钢结构识图/钢结构详情.steel.json。扫描命令与参数归 cad-file-reader，
-# 本技能不封装、不执行识图命令。
-
-# 经 bus 发布识别契约
-bash skills/cad-file-reader/scripts/cad_statesync.sh push \
-  --entry-file 钢结构识图/钢结构详情.steel.json --project 项目 --specialty 钢结构
-
-# 出数前先体检；结构错误退出码 2，不出吨位
+# 从 bus 拉取 cad-file-reader 的契约并计算；未命中或 bus 不可用退出 2
 python3 scripts/steel_tonnage.py \
-  --validate 钢结构识图/钢结构详情.steel.json --report 契约体检.json
+  --from-bus --project 项目 --out-prefix 钢结构吨位
 
-# 计算并落盘 json/md/csv
+# 只体检，不出吨位
 python3 scripts/steel_tonnage.py \
-  --steel 钢结构识图/钢结构详情.steel.json --out-prefix 钢结构吨位
+  --from-bus --project 项目 --validate --report 契约体检.json
 ```
+
+`--from-bus` 只调用 `lis-skill-bus` 拉取契约，找不到可用契约就停止，不会降级成算量技能自己识图。未命中时，先由 `cad-file-reader` 完成唯一一次识图，并由它把 `cad-contract/v1` 经 bus 发布；发布命令与验收口径属于前置技能侧，见 `references/bus-contract.md`。本技能不执行识图，也不编排扫描命令。
 
 ### 2. 已有契约直接计算
 
@@ -76,7 +67,7 @@ python3 scripts/steel_tonnage.py \
   --steel 已有产物.steel.json --out-prefix /tmp/steel-tonnage
 ```
 
-这是计算入口，不是第二套识图路径。契约必须由正式链路生成，或按 `examples/README.md` 手工构造。
+这是计算入口，不是第二套识图路径。契约必须由正式链路生成，或按 `examples/README.md` 手工构造。输出会写 `contract_source.origin=lis-skill-bus`（总线契约）或 `direct_file`（已有/手工契约）；后者不代表正式识图链路。
 
 ### 3. 手工契约（受支持的降级路径）
 
@@ -105,6 +96,7 @@ python3 scripts/steel_tonnage.py \
 | 参数 | 作用 | 退出码 |
 |---|---|---|
 | `--check-deps` | 只探测 `cad-file-reader` / `lis-skill-bus`（含版本与钢结构识图包），不出数 | 齐全 0，缺失/版本过低 1 |
+| `--from-bus` | 正式入口：从 bus 拉取 `cad-contract/v1` 后计算或体检；需配 `--project` | 成功 0，bus 不可用/未命中 2 |
 | `--check-package [--package-root 目录]` | 核对 `manifest.json` 声明的文件是否都在包内，发布/解包自检 | 齐全 0，缺文件 2 |
 | `--validate <json>` | 只体检契约：缺字段、未匹配截面、仅计数、长度证据、依赖状态 | 可计算 0，结构错误 2 |
 | `--report <json>` | 把体检结果另存为 `cad-steel-contract-health/v1` | 随 `--validate` |
@@ -144,14 +136,14 @@ python3 scripts/steel_tonnage.py \
 
 ## 不能做什么
 
-- **不做识图**：不读取 DWG/DXF/DWT/PDF；识图必须先走 `cad-file-reader`。
+- **不做识图**：不读取 DWG/DXF/DWT/PDF，不调用识图脚本；识图只能由 `cad-file-reader` 完成并经 `lis-skill-bus` 交付。
 - **不替代专业成果**：不用于深化设计、翻样、下料、结算、报价或竣工计量。
 - **不硬凑**：缺长度、缺厚度、缺宽度、表外规格或未知截面只计数；识别层标记的 `review` 和缺口必须保留给人工复核。
 - **暂不支持**：除节点板以外的连接件吨位、焊缝吨位、构件级精确截面对应与净量、牌号对米重的影响、曲线或多段几何展开长度、三维模型涂装面积计算、防火等级推断。
 
 ## 依赖
 
-- Python 3.10+（推荐）；主计算入口只用标准库，3.9 可降级运行（已过 59 项单测与最小示例）。
+- Python 3.10+（推荐）；主计算入口只用标准库，3.9 可降级运行（历史回归通过，最小示例可跑）。
 - 正式识图：`cad-file-reader>=0.39.2`（含 `cad-file-reader:packs/steel-geometry`）与 `lis-skill-bus>=0.1.9`。
 - 已有契约或手工契约：不需要上述两个技能在位，直接计算。
 
@@ -162,7 +154,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.6 含 **64 项单测**（54 项合成数据 + 5 项 shell 入口回归 + 3 项包完整性 + 1 项工具范围声明 + 1 项 statesync 代码加载回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、`unknown_grade`、节点板吨位与牌号余量、构件归并复核、连接分类计数、涂装面积降级、逐根/分摊双口径、坐标透传、`--validate` 体检、长度敏感性场景、前置版本校验和 `--check-package`；`.sh` 入口在缺 Python 时干净退出 2。
+v0.3.7 共 **70 项单测**（60 项计算/契约 + 10 项 shell 入口与包完整性），新增总线契约拆封、来源核对、非 `cad-file-reader` producer 拒绝、`--from-bus` 失败关闭和正式链路文档约束；既有覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、`unknown_grade`、节点板吨位与牌号余量、构件归并复核、连接分类计数、涂装面积降级、逐根/分摊双口径、坐标透传、`--validate` 体检、长度敏感性场景、前置版本校验和 `--check-package`；`.sh` 入口在缺 Python 时干净退出 2。
 
 示例烟雾测试：
 

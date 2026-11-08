@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """steel_tonnage 钢结构吨位估算测试（合成数据）。"""
+import contextlib
 import csv
+import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -717,6 +720,102 @@ class TestPrerequisites(unittest.TestCase):
             st = self._status(cad, bus)
             self.assertFalse(st["ready_for_formal_pipeline"])
             self.assertIn("packs/steel-geometry", st["install_hint"])
+
+
+class TestBusContract(unittest.TestCase):
+    """正式契约必须能识别 bus 包装，并核对 cad-file-reader 来源。"""
+
+    def _raw(self):
+        return steel_json(
+            sections=[sec("tube", "Φ1200x50")],
+            members=[{"code": "Z1", "evidence": [{"text": "Z1 Φ1200x50 L=4500"}]}])
+
+    def _wrap(self, producer="cad-file-reader", contract=None):
+        return {
+            "schema": "cad-contract/v1",
+            "_id": "cad-file-reader:项目:1:3:1",
+            "project_key": {"project": "项目", "building": "1", "floor": "3",
+                            "specialty": "钢结构"},
+            "producer": {"skill": producer, "final_quantity": False},
+            "source": {"file": "结构图.dwg", "sha256": "abc123"},
+            "contract": contract if contract is not None else self._raw(),
+        }
+
+    def test_wrapped_contract_builds_with_bus_provenance(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = td / "bus.json"
+            p.write_text(json.dumps(self._wrap()), encoding="utf-8")
+            S.build(str(p), str(td / "ton"))
+            out = json.loads((td / "ton.json").read_text(encoding="utf-8"))
+            src = out["contract_source"]
+            self.assertEqual(src["origin"], "lis-skill-bus")
+            self.assertEqual(src["producer_skill"], "cad-file-reader")
+            self.assertEqual(src["project_key"]["floor"], "3")
+            md = (td / "ton.md").read_text(encoding="utf-8")
+            self.assertIn("契约来源：lis-skill-bus", md)
+
+    def test_non_recognition_producer_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = td / "bus.json"
+            p.write_text(json.dumps(self._wrap(producer="gangjiegou")),
+                         encoding="utf-8")
+            err = io.StringIO()
+            with self.assertRaises(SystemExit) as cm:
+                with contextlib.redirect_stderr(err):
+                    S.build(str(p), str(td / "ton"))
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn("producer.skill", err.getvalue())
+
+    def test_wrapper_with_wrong_inner_schema_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = td / "bus.json"
+            bad = self._raw()
+            bad["schema"] = "cad-steel-tonnage/v0.2"
+            p.write_text(json.dumps(self._wrap(contract=bad)), encoding="utf-8")
+            err = io.StringIO()
+            with self.assertRaises(SystemExit) as cm:
+                with contextlib.redirect_stderr(err):
+                    S.build(str(p), str(td / "ton"))
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn("contract.schema", err.getvalue())
+
+    def test_validate_accepts_wrapped_contract(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = td / "bus.json"
+            p.write_text(json.dumps(self._wrap()), encoding="utf-8")
+            report = S.validate_path(str(p))
+            self.assertNotEqual(report["status"], "error")
+            self.assertEqual(report["contract_source"]["origin"], "lis-skill-bus")
+
+    def test_from_bus_fails_closed_without_bus(self):
+        cmd = [sys.executable, str(Path(__file__).resolve().parents[1] / "steel_tonnage.py"),
+               "--from-bus", "--project", "项目", "--out-prefix",
+               str(Path(tempfile.mkdtemp()) / "ton")]
+        env = dict(os.environ)
+        env["SKILLBUS_DISABLE"] = "1"
+        run = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+        self.assertIn("lis-skill-bus 不可用", run.stdout + run.stderr)
+
+
+class TestFormalChainDocs(unittest.TestCase):
+    """文档必须把 bus 写成正式入口，且不得出现算量侧识图命令。"""
+
+    def _text(self, name):
+        return (Path(__file__).resolve().parents[2] / name).read_text(encoding="utf-8")
+
+    def test_formal_docs_require_bus_and_from_bus_entry(self):
+        for name in ("SKILL.md", "README.md", "README.en.md"):
+            text = self._text(name)
+            self.assertIn("lis-skill-bus", text, name)
+            self.assertIn("--from-bus", text, name)
+            self.assertNotIn("cad_scan.sh", text, name)
+            self.assertNotIn("cad_steel_geometry.sh", text, name)
+            self.assertNotIn("skills/cad-file-reader/scripts/cad_statesync.sh", text, name)
 
 
 if __name__ == "__main__":

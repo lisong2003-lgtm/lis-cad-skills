@@ -38,7 +38,10 @@ import csv
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
@@ -975,6 +978,92 @@ def _validate_contract(data) -> dict:
     return data
 
 
+def _unwrap_contract(data):
+    """接受总线契约或原始契约，返回 (钢结构契约, 来源元数据, 错误)。
+
+    正式识图链路由 lis-skill-bus 交付 cad-contract/v1，其中 contract 才是
+    cad-file-reader 生成的 cad-steel-geometry/v1。这里只做拆封和来源核对，
+    不解析图纸，也不补造任何识图字段。
+    """
+    meta = {"origin": "direct_file", "schema": None}
+    if not isinstance(data, dict):
+        return data, meta, "契约顶层必须是 JSON object"
+    schema = data.get("schema")
+    meta["schema"] = schema
+    if schema != "cad-contract/v1":
+        return data, meta, None
+
+    producer = data.get("producer") if isinstance(data.get("producer"), dict) else {}
+    producer_skill = str(producer.get("skill") or "")
+    if producer_skill != "cad-file-reader":
+        return data, meta, (
+            "cad-contract/v1 的 producer.skill 必须是 cad-file-reader，"
+            f"当前为 {producer_skill or '<missing>'}；算量结果不能冒充识图契约")
+    contract = data.get("contract")
+    if not isinstance(contract, dict):
+        return data, meta, "cad-contract/v1 缺少 contract object"
+    if contract.get("schema") != INPUT_SCHEMA:
+        return data, meta, (
+            f"cad-contract/v1.contract.schema 必须是 {INPUT_SCHEMA}，"
+            f"当前为 {contract.get('schema') or '<missing>'}")
+    source = data.get("source") if isinstance(data.get("source"), dict) else {}
+    meta = {
+        "origin": "lis-skill-bus",
+        "schema": "cad-contract/v1",
+        "producer_skill": producer_skill,
+        "entry_id": str(data.get("_id") or ""),
+        "project_key": data.get("project_key") or {},
+        "source_file": str(source.get("file") or ""),
+        "source_sha256": str(source.get("sha256") or ""),
+    }
+    return contract, meta, None
+
+
+def pull_contract_from_bus(project: str, building: str = "", floor: str = "",
+                           entry_id: str = "", require_core: bool = True) -> Path:
+    """通过本技能 statesync 从 lis-skill-bus 拉取正式契约。
+
+    只调用 bus 接线，不调用 cad-file-reader 的扫描脚本；缺 bus、未命中或
+    契约不可用时直接失败，不降级为本地识图。
+    """
+    if not project:
+        print("❌ --from-bus 需要 --project", file=sys.stderr)
+        raise SystemExit(2)
+    out = Path(tempfile.mkdtemp(prefix="gangjiegou-bus-")) / "cad-contract.json"
+    script = Path(__file__).resolve().parent / "gangjiegou_statesync.py"
+    cmd = [sys.executable, str(script), "pull", "--project", project,
+           "--out", str(out)]
+    if building:
+        cmd += ["--building", building]
+    if floor:
+        cmd += ["--floor", floor]
+    if entry_id:
+        cmd += ["--entry-id", entry_id]
+    if require_core:
+        cmd += ["--require-core"]
+    run = subprocess.run(cmd, capture_output=True, text=True)
+    if run.returncode == 2:
+        detail = (run.stderr or run.stdout or "").strip()
+        print("❌ lis-skill-bus 不可用，正式识图链路停止。"
+              + (f"\n{detail}" if detail else ""), file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        status = json.loads(run.stdout)
+    except json.JSONDecodeError:
+        print("❌ bus 拉取输出无法解析，正式链路停止", file=sys.stderr)
+        raise SystemExit(2)
+    if not status.get("hit") or not status.get("usable"):
+        reason = status.get("reason") or "未命中可用契约"
+        print("❌ bus 未命中可用钢结构契约：" + str(reason) +
+            "。请先由 cad-file-reader 完成唯一一次识图并经 lis-skill-bus 发布；"
+              "本技能不执行识图，也不会另开解析路径。", file=sys.stderr)
+        raise SystemExit(2)
+    if not out.is_file():
+        print("❌ bus 返回 usable=true 但没有写出契约文件", file=sys.stderr)
+        raise SystemExit(2)
+    return out
+
+
 # ---------------------------------------------------------------- 前置/体检
 
 def _first_existing_skill(*names: str) -> str | None:
@@ -1190,7 +1279,7 @@ def _load_json(path: str) -> tuple[dict | None, str | None]:
         return None, f"非契约 JSON：{path} 解析失败（第 {exc.lineno} 行，第 {exc.colno} 列）"
 
 
-def contract_health(data) -> dict:
+def contract_health(data, contract_meta: dict | None = None) -> dict:
     """契约体检：只诊断字段、截面匹配和仅计数项，不出吨位、不写文件。"""
     report: dict = {
         "schema": "cad-steel-contract-health/v1",
@@ -1203,6 +1292,7 @@ def contract_health(data) -> dict:
         "members": {"total": 0, "matched": 0, "unmatched": [], "no_length": [],
                     "no_section": []},
         "dependencies": prerequisites_status(),
+        "contract_source": contract_meta or {"origin": "direct_file"},
     }
     if not isinstance(data, dict):
         report["status"] = "error"
@@ -1332,6 +1422,12 @@ def format_health(report: dict) -> str:
     label = {"ok": "✅ 契约可计算", "warn": "⚠️ 契约可计算，但有需复核项",
              "error": "❌ 契约不可计算"}[report["status"]]
     lines = [f"契约体检：{label}"]
+    src = report.get("contract_source") or {}
+    if src.get("origin") == "lis-skill-bus":
+        lines.append("契约来源：lis-skill-bus（producer={}）".format(
+            src.get("producer_skill") or "-"))
+    elif src.get("origin") == "direct_file":
+        lines.append("契约来源：直接文件（已有契约或手工契约，不代表正式识图链路）")
     if report["errors"]:
         lines.append("错误：")
         lines.extend(f"- {x}" for x in report["errors"])
@@ -1370,14 +1466,27 @@ def format_health(report: dict) -> str:
 def validate_path(path: str) -> dict:
     data, err = _load_json(path)
     if err:
-        return {
+        report = {
             "schema": "cad-steel-contract-health/v1", "status": "error",
             "errors": [err], "warnings": [], "counts": {}, "length": {},
             "sections": [], "members": {"total": 0, "matched": 0, "unmatched": [],
                                         "no_length": [], "no_section": []},
             "dependencies": prerequisites_status(),
+            "contract_source": {"origin": "unknown"},
         }
-    return contract_health(data)
+        return report
+    data, meta, unwrap_err = _unwrap_contract(data)
+    if unwrap_err:
+        report = {
+            "schema": "cad-steel-contract-health/v1", "status": "error",
+            "errors": [unwrap_err], "warnings": [], "counts": {}, "length": {},
+            "sections": [], "members": {"total": 0, "matched": 0, "unmatched": [],
+                                        "no_length": [], "no_section": []},
+            "dependencies": prerequisites_status(),
+            "contract_source": meta,
+        }
+        return report
+    return contract_health(data, meta)
 
 
 def member_level_total(merged: list[dict]) -> tuple[list[float], str]:
@@ -1456,6 +1565,10 @@ def build(steel_path: str, out_prefix: str,
         raise SystemExit(
             f"❌ 非契约 JSON：{steel_path} 解析失败"
             f"（第 {exc.lineno} 行，第 {exc.colno} 列）") from exc
+    steel, contract_meta, unwrap_err = _unwrap_contract(steel)
+    if unwrap_err:
+        print(f"❌ 契约来源不符：{unwrap_err}", file=sys.stderr)
+        raise SystemExit(2)
     steel = _validate_contract(steel)
     sections = steel.get("sections") or []
     members = steel.get("members") or []
@@ -1594,6 +1707,7 @@ def build(steel_path: str, out_prefix: str,
         "allowance_advice": allowance_advice(total_band),
         "geometry_closure_check": closure_check,
         "prerequisites": pre,
+        "contract_source": contract_meta,
         "input_evidence": {
             "sections": len(sections),
             "members": len(members),
@@ -1630,6 +1744,15 @@ def _render(out: dict, title: str, out_prefix: str) -> None:
     md.write("> **口径声明**：估算带（±15%），final_quantity=false；米重为截面几何公式近似"
              "（不含圆角，H 型偏低 1~2%、冷弯 C/Z 偏低 2~5%）；不替代深化设计、翻样、下料与结算。\n")
     md.write(f"> 长度口径：**{out['length_note']}**\n")
+    src = out.get("contract_source") or {}
+    if src.get("origin") == "lis-skill-bus":
+        pk = src.get("project_key") or {}
+        project = " / ".join(str(pk.get(k) or "") for k in
+                             ("project", "building", "floor") if pk.get(k))
+        md.write(f"> 契约来源：lis-skill-bus（producer={src.get('producer_skill') or '-'}"
+                 f"；项目={project or '-'}）\n")
+    else:
+        md.write("> 契约来源：直接文件（已有契约或手工契约；不代表正式识图链路）\n")
     pre = out.get("prerequisites") or {}
     if pre.get("ready_for_formal_pipeline"):
         md.write("> 前置探测：cad-file-reader ✅ / lis-skill-bus ✅（正式识图链路可用）\n")
@@ -1851,6 +1974,14 @@ def main() -> None:
                     help="契约 JSON 路径（--validate 时可作为位置参数）")
     ap.add_argument("--steel",
                     help="cad_steel_geometry 产物 *.steel.json（计算模式必填）")
+    ap.add_argument("--from-bus", action="store_true",
+                    help="正式入口：从 lis-skill-bus 拉取 cad-file-reader 契约后计算")
+    ap.add_argument("--project", help="--from-bus 的项目标识")
+    ap.add_argument("--building", default="", help="--from-bus 的楼栋（可选）")
+    ap.add_argument("--floor", default="", help="--from-bus 的楼层（可选）")
+    ap.add_argument("--entry-id", default="", help="--from-bus 指定 bus entry（可选）")
+    ap.add_argument("--no-require-core", action="store_true",
+                    help="--from-bus 时不要求 members/sections 核心 section 命中")
     ap.add_argument("--out-prefix", help="输出前缀（计算模式必填）")
     ap.add_argument("--validate", action="store_true",
                     help="只体检输入契约：缺字段、未匹配截面、仅计数项；不出吨位")
@@ -1874,7 +2005,18 @@ def main() -> None:
         print(format_package(pkg))
         raise SystemExit(0 if pkg["status"] == "ok" else 2)
 
+    if a.from_bus and (a.steel or a.contract):
+        ap.error("--from-bus 与 --steel/位置参数只能二选一")
     steel_path = a.steel or a.contract
+    bus_dir = None
+    if a.from_bus:
+        if not a.project:
+            ap.error("--from-bus 需要 --project")
+        pulled = pull_contract_from_bus(
+            a.project, a.building, a.floor, a.entry_id,
+            require_core=not a.no_require_core)
+        steel_path = str(pulled)
+        bus_dir = pulled.parent
     if a.validate:
         if not steel_path:
             ap.error("--validate 需要契约路径：--steel 路径 或 直接放位置参数")
@@ -1886,11 +2028,15 @@ def main() -> None:
             rp.write_text(json.dumps(report, ensure_ascii=False, indent=2),
                           encoding="utf-8")
             print(f"体检报告：{rp}")
+        if bus_dir is not None:
+            shutil.rmtree(bus_dir, ignore_errors=True)
         raise SystemExit(0 if report["status"] != "error" else 2)
 
     if not steel_path or not a.out_prefix:
         ap.error("计算模式需要 --steel 和 --out-prefix；只体检请用 --validate")
     build(steel_path, a.out_prefix, length_scenarios=a.length_scenario)
+    if bus_dir is not None:
+        shutil.rmtree(bus_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

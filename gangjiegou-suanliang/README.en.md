@@ -2,9 +2,9 @@
 
 **[English](./README.en.md) | [中文](./README.md)**
 
-**v0.3.6** · Converts an existing `*.steel.json` contract from the `cad-file-reader` steel-geometry pack into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
+**v0.3.7** · Formal entry `--from-bus`: pulls the `cad-file-reader` steel contract through `lis-skill-bus` and turns it into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
 
-The formal recognition path is fixed: `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`. This skill never reads DWG/DXF/PDF and does not provide a second recognition path that bypasses `cad-file-reader` or `lis-skill-bus`.
+The formal recognition path is fixed: `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`. Only `cad-file-reader` recognizes drawings, and contracts cross only through `lis-skill-bus`. This skill never reads DWG/DXF/PDF, never calls recognition scripts, and provides no drawing path that bypasses the bus.
 
 ## Check availability first
 
@@ -42,31 +42,22 @@ python3 scripts/steel_tonnage.py --check-deps
 
 ## Quick start
 
-### 1. Formal recognition path
+### 1. Formal path (the only entry: lis-skill-bus)
 
 ```bash
 # Probe prerequisites first; exit 1 when either is missing
 python3 scripts/steel_tonnage.py --check-deps
 
-# Reuse a matching contract when available; no second drawing parse
-bash scripts/gangjiegou_statesync.sh pull --project PROJECT
-
-# Otherwise follow cad-file-reader's SKILL.md for the single drawing scan and
-# produce steel-geometry/detail.steel.json. Scan commands and parameters belong
-# to cad-file-reader; this skill neither wraps nor executes them.
-
-# Publish the recognition contract through the bus
-bash skills/cad-file-reader/scripts/cad_statesync.sh push \
-  --entry-file steel-geometry/detail.steel.json --project PROJECT --specialty steel
-
-# Validate first; structural errors exit 2 and never produce tonnage
+# Pull the cad-file-reader contract from the bus and calculate; exit 2 on a miss
 python3 scripts/steel_tonnage.py \
-  --validate steel-geometry/detail.steel.json --report contract-health.json
+  --from-bus --project PROJECT --out-prefix steel-tonnage
 
-# Calculate JSON/MD/CSV
+# Health check only, no tonnage
 python3 scripts/steel_tonnage.py \
-  --steel steel-geometry/detail.steel.json --out-prefix steel-tonnage
+  --from-bus --project PROJECT --validate --report contract-health.json
 ```
+
+`--from-bus` only pulls through `lis-skill-bus`. A miss stops the run instead of falling back to recognition inside this skill. When nothing is available, `cad-file-reader` must perform the single recognition pass and publish the `cad-contract/v1` through the bus; that publish step and its acceptance check belong to the prerequisite skill and are described in `references/bus-contract.md`. This skill never scans drawings or orchestrates scan commands.
 
 ### 2. Calculate from an existing contract
 
@@ -75,7 +66,7 @@ python3 scripts/steel_tonnage.py \
   --steel path/to/detail.steel.json --out-prefix /tmp/steel-tonnage
 ```
 
-This is a calculation entry, not a second recognition path. The contract must come from the formal chain or from the supported manual template.
+This is a calculation entry, not a second recognition path. The contract must come from the formal chain or from the supported manual template. Output records `contract_source.origin=lis-skill-bus` for bus contracts or `direct_file` for existing/manual contracts; the latter does not prove the formal recognition chain.
 
 ### 3. Manual contract (supported fallback)
 
@@ -104,6 +95,7 @@ python3 scripts/steel_tonnage.py \
 | Option | Purpose | Exit status |
 |---|---|---|
 | `--check-deps` | Probe `cad-file-reader` / `lis-skill-bus` versions and the steel pack only | 0 when ready, 1 when missing or too old |
+| `--from-bus` | Formal entry: pull a `cad-contract/v1` through the bus, then calculate or health-check; requires `--project` | 0 on success, 2 when the bus is unavailable or misses |
 | `--check-package [--package-root DIR]` | Verify every file listed in `manifest.json` exists in the package | 0 when complete, 2 when a file is missing |
 | `--validate <json>` | Contract health check only: fields, unmatched members, count-only sections, length evidence, dependencies | 0 when calculable, 2 on structural errors |
 | `--report <json>` | Write the health report as `cad-steel-contract-health/v1` | Follows `--validate` |
@@ -143,7 +135,7 @@ When `steel_geometry[]`, `connections[]`, or `finishes[]` is empty, the report s
 
 ## What it does not do
 
-- It does not scan DWG, DXF, DWT, or PDF files. Drawing recognition belongs to `cad-file-reader`.
+- It does not scan DWG, DXF, DWT, or PDF files and never calls recognition scripts. Recognition belongs to `cad-file-reader` and crosses `lis-skill-bus`.
 - It is not for deepened design, fabrication detailing, cutting lists, settlement, formal pricing, or completion measurement.
 - It does not fill gaps with defaults: missing length/width/thickness, out-of-table sections, or unknown section types are count-only and remain subject to human review.
 - Not supported yet: tonnage for connections other than connection plates, weld tonnage, exact member-to-section mapping and net quantities, grade-based unit-weight adjustment, curved or multipart geometry length, 3D-model coating areas, and fire-rating inference.
@@ -161,7 +153,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.6 includes **64 unit tests** (54 synthetic-data + 5 shell entry-point + 3 package-integrity + 1 tool-scope declaration + 1 statesync core-loading regression) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
+v0.3.7 adds **6 unit tests** for bus-contract unwrapping, source validation, fail-closed `--from-bus`, and formal-chain documentation; together with the existing suite that is **70 tests** (60 calculation/contract tests plus 10 shell/package regressions). Coverage includes unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
 
 Smoke test:
 

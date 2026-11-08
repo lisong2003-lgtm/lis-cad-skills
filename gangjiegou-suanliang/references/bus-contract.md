@@ -4,9 +4,11 @@
 
 ## lis-skill-bus 强制契约链路
 
-- 正式识图必须经过 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`；本技能不读取图纸，也不在 bus 缺失时另开识图路径。
+- 正式识图必须经过 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`。识图只发生在 `cad-file-reader`；本技能不读取图纸、不调用 `cad_scan.sh`/`cad_steel_geometry.sh` 等识图脚本，也不在 bus 缺失时另开解析路径。
+- 正式计算入口是 `steel_tonnage.py --from-bus --project 项目 [--building 楼栋] [--floor 楼层] [--entry-id ID]`。它只调用本技能 statesync 从 bus 拉契约，核对 `producer.skill=cad-file-reader` 与 `contract.schema=cad-steel-geometry/v1` 后拆封；未命中、bus 不可用或来源不符都以退出码 2 停止。
+- `--steel 文件` 只用于重算已有契约或手工契约，输出 `contract_source.origin=direct_file`，不得当作正式识图链路的结果对外宣称。
 - 状态过滤：项目名/楼栋/楼层一致时，本技能与 `cad-file-reader` 及其它算量 skill 通过 lis-skill-bus 交换 `cad-contract/v1`；命中即复用，不再重复解图。
-- 拉取（开工前）：`scripts/gangjiegou_statesync.sh pull --project 项目 [--building 楼栋] [--floor 楼层] [--out 落盘.json]`
+- 拉取（底层接线，正式入口 `--from-bus` 内部自动调用）：`scripts/gangjiegou_statesync.sh pull --project 项目 [--building 楼栋] [--floor 楼层] [--out 落盘.json]`
   —— 命中且契约含本专业 section 字段（`members`、`sections`、`steel_geometry`、`connections`、`materials`、`finishes`）时返回 `hit=true usable=true`，可直接复用；未命中只触发一次新的 `cad-file-reader` 识图，不触发本技能本地解析。
 - 发布（算量落盘后）：`scripts/gangjiegou_statesync.sh push --entry-file <本技能输出.json> --project 项目 [--building 楼栋] [--floor 楼层] [--specialty 钢结构]`，自动包装成 `cad-contract/v1` 后入 bus。
 - 对应接线脚本：`lis-skill-bus/integration/gangjiegou_pull_contract.sh` / `gangjiegou_publish_contract.sh`（薄壳，等价调用本技能 statesync）。
