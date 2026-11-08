@@ -2,7 +2,7 @@
 
 **[English](./README.en.md) | [中文](./README.md)**
 
-**v0.3.5** · 给已有钢结构识图产物的使用者：不碰图纸解析，只把 `cad-file-reader` 钢结构包的 `*.steel.json` 变成 **截面谱 + 吨位估算带 + 构件台账**。
+**v0.3.6** · 给已有钢结构识图产物的使用者：不碰图纸解析，只把 `cad-file-reader` 钢结构包的 `*.steel.json` 变成 **截面谱 + 吨位估算带 + 构件台账**。
 
 正式识图链路固定为 `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`。本技能不读取 DWG/DXF/PDF，也不提供绕开 `cad-file-reader` 或 `lis-skill-bus` 的第二套识图路径。
 
@@ -52,13 +52,9 @@ python3 scripts/steel_tonnage.py --check-deps
 # 复用同项目/楼栋/楼层的契约；命中则不再解图
 bash scripts/gangjiegou_statesync.sh pull --project 项目
 
-# 未命中时由 cad-file-reader 唯一一次识图并产出钢结构契约
-bash skills/cad-file-reader/scripts/cad_scan.sh 钢结构图.dwg \
-  --with-mtext --with-insert --with-geom --with-geom-layer \
-  --detail-json 钢结构详情.json --format json -o 钢结构扫描
-
-bash skills/cad-file-reader/scripts/cad_steel_geometry.sh \
-  钢结构详情.json --out-dir 钢结构识图
+# 未命中时：按 cad-file-reader 的 SKILL.md 执行唯一一次识图，产出
+# 钢结构识图/钢结构详情.steel.json。扫描命令与参数归 cad-file-reader，
+# 本技能不封装、不执行识图命令。
 
 # 经 bus 发布识别契约
 bash skills/cad-file-reader/scripts/cad_statesync.sh push \
@@ -166,7 +162,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.5 含 **64 项单测**（54 项合成数据 + 5 项 shell 入口回归 + 3 项包完整性 + 1 项工具范围声明 + 1 项 statesync 代码加载回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、`unknown_grade`、节点板吨位与牌号余量、构件归并复核、连接分类计数、涂装面积降级、逐根/分摊双口径、坐标透传、`--validate` 体检、长度敏感性场景、前置版本校验和 `--check-package`；`.sh` 入口在缺 Python 时干净退出 2。
+v0.3.6 含 **64 项单测**（54 项合成数据 + 5 项 shell 入口回归 + 3 项包完整性 + 1 项工具范围声明 + 1 项 statesync 代码加载回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、`unknown_grade`、节点板吨位与牌号余量、构件归并复核、连接分类计数、涂装面积降级、逐根/分摊双口径、坐标透传、`--validate` 体检、长度敏感性场景、前置版本校验和 `--check-package`；`.sh` 入口在缺 Python 时干净退出 2。
 
 示例烟雾测试：
 

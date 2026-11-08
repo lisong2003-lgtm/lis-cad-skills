@@ -2,7 +2,7 @@
 
 **[English](./README.en.md) | [中文](./README.md)**
 
-**v0.3.5** · Converts an existing `*.steel.json` contract from the `cad-file-reader` steel-geometry pack into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
+**v0.3.6** · Converts an existing `*.steel.json` contract from the `cad-file-reader` steel-geometry pack into a section spectrum, tonnage estimate band, and member ledger. It does not read or interpret drawings.
 
 The formal recognition path is fixed: `cad-file-reader -> cad-contract/v1 -> lis-skill-bus -> gangjiegou-suanliang`. This skill never reads DWG/DXF/PDF and does not provide a second recognition path that bypasses `cad-file-reader` or `lis-skill-bus`.
 
@@ -51,13 +51,9 @@ python3 scripts/steel_tonnage.py --check-deps
 # Reuse a matching contract when available; no second drawing parse
 bash scripts/gangjiegou_statesync.sh pull --project PROJECT
 
-# Otherwise cad-file-reader performs the only drawing recognition
-bash skills/cad-file-reader/scripts/cad_scan.sh drawing.dwg \
-  --with-mtext --with-insert --with-geom --with-geom-layer \
-  --detail-json detail.json --format json -o cad-scan
-
-bash skills/cad-file-reader/scripts/cad_steel_geometry.sh \
-  detail.json --out-dir steel-geometry
+# Otherwise follow cad-file-reader's SKILL.md for the single drawing scan and
+# produce steel-geometry/detail.steel.json. Scan commands and parameters belong
+# to cad-file-reader; this skill neither wraps nor executes them.
 
 # Publish the recognition contract through the bus
 bash skills/cad-file-reader/scripts/cad_statesync.sh push \
@@ -165,7 +161,7 @@ cd scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.5 includes **64 unit tests** (54 synthetic-data + 5 shell entry-point + 3 package-integrity + 1 tool-scope declaration + 1 statesync core-loading regression) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
+v0.3.6 includes **64 unit tests** (54 synthetic-data + 5 shell entry-point + 3 package-integrity + 1 tool-scope declaration + 1 statesync core-loading regression) covering unit-weight formulas, GB/T 706 lookups, both length bases, no-length fallback, contract rejection, duplicate codes, grade bands, `unknown_grade`, connection-plate tonnage and grade residuals, member-merge review, connection categories, finish fallback, member/allocation totals, coordinate passthrough, `--validate`, length scenarios, dependency version checks, `--check-package`, and clean exit 2 from `.sh` entry points when no Python is available.
 
 Smoke test:
 

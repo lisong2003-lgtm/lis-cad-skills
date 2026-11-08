@@ -2,7 +2,7 @@
 name: gangjiegou-suanliang
 slug: gangjiegou-suanliang
 displayName: 钢结构算量 · 吨位估算带
-version: 0.3.5
+version: 0.3.6
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
@@ -176,4 +176,4 @@ cd skills/gangjiegou-suanliang/scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.5 含 64 项单测（54 项合成数据 + 5 项 shell 入口回归 + 3 项发布包完整性 + 1 项工具范围声明 + 1 项 statesync 代码加载回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
+v0.3.6 含 64 项单测（54 项合成数据 + 5 项 shell 入口回归 + 3 项发布包完整性 + 1 项工具范围声明 + 1 项 statesync 代码加载回归），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
