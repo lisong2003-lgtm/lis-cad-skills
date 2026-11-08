@@ -29,6 +29,7 @@ except Exception:
 """
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -40,8 +41,7 @@ def ensure_utf8_io() -> None:
     """stdout/stderr 与子进程环境切 UTF-8（重复调用安全）。"""
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.environ.setdefault("PYTHONUTF8", "1")
-    for _name in ("stdout", "stderr"):
-        _stream = getattr(sys, _name, None)
+    for _stream in (sys.stdout, sys.stderr):
         _reconf = getattr(_stream, "reconfigure", None)
         if callable(_reconf):
             try:
@@ -82,7 +82,7 @@ def skill_version() -> str:
     manifest = root / "manifest.json"
     if manifest.is_file():
         try:
-            data = __import__("json").loads(manifest.read_text(encoding="utf-8"))
+            data = json.loads(manifest.read_text(encoding="utf-8"))
             version = data.get("version")
             if isinstance(version, str) and version.strip():
                 return version.strip()

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 · 2026-11-08 · 安全扫描可解释性
+
+- **前置技能边界更明确**：SKILL.md 不再把 `cad-file-reader` 的扫描命令写成由本技能执行的步骤，改为接口顺序说明；被测图命令与参数仍完整保留在 README，实际执行责任不变。
+- **声明工具范围**：frontmatter 增加 `allowed-tools: Read, Write, Bash`；正文说明只读契约/示例、只写本地产物、不联网。
+- **减少静态扫描误报**：测试夹具不再复制整个进程环境，只透传运行所需的少量变量；`pyboot.py` 改用普通 `import json` 与显式流对象。
+- **回归**：新增工具范围声明测试，合计 63 项。
+
 ## 0.3.3 · 2026-11-08 · 分发一致性与入口指引
 
 - **修 SkillHub 包完整性扣分**：平台评估指出 `manifest.json` 声明了轻量包内不存在的两个 `.cmd`。SkillHub 实测拒收 `.cmd` 与 `.png`（400），因此把 `.cmd` 从必需 `scripts` 移到 `scripts_windows_optional`，清单不再声明“必须存在”；GitHub/ClawHub 完整包照旧带 `.cmd`，Windows 无 `.cmd` 时用 `py -3 scripts\steel_tonnage.py`。

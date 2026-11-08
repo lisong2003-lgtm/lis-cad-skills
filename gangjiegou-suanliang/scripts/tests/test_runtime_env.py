@@ -18,9 +18,8 @@ BASH = shutil.which("bash") or "/bin/bash"
 
 
 def _env(path_value=None, extra=None):
-    env = dict(os.environ)
-    for key in ("CAD_SKILL_PYTHON", "CODEX_PYTHON"):
-        env.pop(key, None)
+    keys = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SystemRoot", "ComSpec")
+    env = {key: os.environ[key] for key in keys if key in os.environ}
     if path_value is not None:
         env["PATH"] = path_value
     env.update(extra or {})
@@ -136,6 +135,14 @@ class TestPackageCheck(unittest.TestCase):
             p = self._run("--package-root", str(root))
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
             self.assertIn("Windows 入口未随包", p.stdout)
+
+
+class TestToolScope(unittest.TestCase):
+    def test_skill_declares_tool_scope(self):
+        text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        frontmatter = text.split("---", 2)[1]
+        self.assertIn("allowed-tools: Read, Write, Bash", frontmatter)
+        self.assertIn("不联网、不上传、不调用外部 API", text)
 
 
 if __name__ == "__main__":

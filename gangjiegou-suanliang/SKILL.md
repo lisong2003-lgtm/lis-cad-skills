@@ -2,10 +2,11 @@
 name: gangjiegou-suanliang
 slug: gangjiegou-suanliang
 displayName: 钢结构算量 · 吨位估算带
-version: 0.3.3
+version: 0.3.4
 platforms: [macos, windows, linux]
 author: lis
 license: CC-BY-NC-SA-4.0
+allowed-tools: Read, Write, Bash
 description: "钢结构算量：消费 cad-file-reader 的 *.steel.json，按截面标注/米重公式/显式或图面长度出吨位估算带（json/md/csv），含牌号分档、构件归并、连接计数、节点板、涂装面积、复核清单。不做识图，不替代深化/翻样/下料/结算/报价。"
 i18n:
   en: README.en.md
@@ -24,6 +25,8 @@ locale: zh-CN
 - 本技能不提供第二套识图路径。bus 缺失时正式识图链路停止并提示安装；已经由该链路生成并留存的官方契约仍可直接送入 `steel_tonnage.py` 做计算或回归。
 - 算量结果必须带契约来源（图号/坐标证据）。
 - 首次使用或换机后先运行 `python3 scripts/steel_tonnage.py --check-deps`：同时校验两个前置的**版本号**与 `packs/steel-geometry` 是否在位；齐全退出 0，缺失/版本过低退出 1 并逐项列出当前值与最低要求。缺依赖只阻断“从 DWG 开始”的正式识图链路，不阻断已有契约或手工契约的计算。发布或解包后可用 `--check-package` 核对 `manifest.json` 声明的文件是否都在包内。
+
+工具范围：只读取用户指定的 `*.steel.json`、示例与清单文件；只写 `--out-prefix` / `--report` 指定的本地结果；只执行包内 Python 与 shell 入口。不联网、不上传、不调用外部 API，也不读取 DWG/DXF/DWT/PDF。
 
 ## 入口怎么选
 
@@ -54,21 +57,16 @@ locale: zh-CN
 
 ## 调用链路
 
+下面前两步描述接口顺序；第 1 步的 DWG 扫描与钢结构几何提取由 `cad-file-reader` 技能执行，命令和参数以该技能的 `SKILL.md` 为准，本技能不封装也不执行识图命令。完整命令示例见 `README.md`。
+
 ```bash
 # 0) 正式识图链路要求先安装 lis-skill-bus；缺 bus 时本步骤以退出码 2 停止
 bash skills/gangjiegou-suanliang/scripts/gangjiegou_statesync.sh pull --project 项目
 
-# 1) cad-file-reader 负责唯一一次识图；钢结构包产出契约 JSON
-bash skills/cad-file-reader/scripts/cad_scan.sh 钢结构图.dwg \
-  --with-mtext --with-insert --with-geom --with-geom-layer \
-  --detail-json 钢结构详情.json --format json -o 钢结构扫描
+# 1) 未命中时：由 cad-file-reader 执行唯一一次识图并产出 *.steel.json
+#    本技能只接收产物，不调用识图脚本。
 
-bash skills/cad-file-reader/scripts/cad_steel_geometry.sh \
-  钢结构详情.json --out-dir 钢结构识图
-
-# 2) cad-file-reader 把识别契约经 bus 发布，后续算量技能复用同一份契约
-bash skills/cad-file-reader/scripts/cad_statesync.sh push \
-  --entry-file 钢结构识图/钢结构详情.steel.json --project 项目 --specialty 钢结构
+# 2) 由 cad-file-reader / bus 的发布入口把识别契约入库，后续算量复用同一份契约
 
 # 3) 出数前先体检契约（不出吨位，只查字段/配对/仅计数）
 python3 skills/gangjiegou-suanliang/scripts/steel_tonnage.py \
@@ -178,4 +176,4 @@ cd skills/gangjiegou-suanliang/scripts/tests
 python3 -m unittest test_steel_tonnage
 ```
 
-v0.3.3 含 62 项单测（54 项合成数据 + 5 项 shell 入口回归 + 3 项发布包完整性），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
+v0.3.4 含 63 项单测（54 项合成数据 + 5 项 shell 入口回归 + 3 项发布包完整性 + 1 项工具范围声明），覆盖米重公式、GB/T 706 查表、长度两档、无长度降级、输入契约拒绝、重复编号提示、牌号分档、unknown_grade、构件归并复核、连接分类计数、节点板吨位、涂装面积降级、逐根/分摊双口径、坐标透传、节点板牌号余量、`--validate` 体检、长度敏感性场景、前置版本校验、`--check-package` 清单核对，以及缺 Python 时 `.sh` 入口必须干净退出 2（不得出现 `exec: : not found`）。
