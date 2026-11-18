@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B4F9C"/>
+      <stop offset="1" stop-color="#2B7DE9"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="288" rx="112" fill="url(#sheen)"/>
+  <!-- 市政：道路透视图 -->
+  <g fill="#FFFFFF">
+    <path d="M216 128 L296 128 L372 384 L140 384 Z" fill-opacity="0.22"/>
+  </g>
+  <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round">
+    <path d="M216 128 L140 384"/>
+    <path d="M296 128 L372 384"/>
+  </g>
+  <!-- 道路中线虚线 -->
+  <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round">
+    <path d="M256 176 L256 216"/>
+    <path d="M256 252 L256 300"/>
+    <path d="M256 336 L256 372"/>
+  </g>
+  <!-- 底部算量刻度 -->
+  <g stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" opacity="0.9">
+    <path d="M120 404 H392"/>
+    <path d="M120 404 V424 M190 404 V418 M256 404 V424 M322 404 V418 M392 404 V424"/>
+  </g>
+</svg>
